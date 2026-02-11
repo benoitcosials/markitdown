@@ -5,8 +5,10 @@ import io
 import os
 import re
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any, BinaryIO
+from urllib.parse import quote
 
 from .._base_converter import DocumentConverter, DocumentConverterResult
 from .._exceptions import (
@@ -45,6 +47,34 @@ class PptxConverter(DocumentConverter):
         # --- MODULE: Image Management (BRIEF_01) ---
         self._image_hashes = {}  # Deduplication mapping {hash: path}
         # --- END MODULE ---
+
+    def _slugify(self, text: str) -> str:
+        """
+        Convert text to wiki-folder convention (slug format).
+        
+        Transforms: "Kickoff QA - Essais UAT R1" → "kickoff_qa_essais_uat_r1"
+        
+        Args:
+            text: Original text with spaces and special characters
+        
+        Returns:
+            str: Slugified text (lowercase, underscores, no special chars)
+        """
+        # Normalize unicode (decompose accents)
+        text = unicodedata.normalize('NFKD', text)
+        # Remove accents
+        text = text.encode('ascii', 'ignore').decode('ascii')
+        # Convert to lowercase
+        text = text.lower()
+        # Replace spaces and hyphens with underscores
+        text = re.sub(r'[\s-]+', '_', text)
+        # Remove any remaining non-alphanumeric characters (except underscores)
+        text = re.sub(r'[^a-z0-9_]', '', text)
+        # Remove consecutive underscores
+        text = re.sub(r'_+', '_', text)
+        # Strip leading/trailing underscores
+        text = text.strip('_')
+        return text
 
     def accepts(
         self,
@@ -88,7 +118,9 @@ class PptxConverter(DocumentConverter):
         presentation = pptx.Presentation(file_stream)
         
         # --- MODULE: Image Management - Configuration (BRIEF_01) ---
-        image_dir = kwargs.get("image_dir", "images")
+        image_dir_raw = kwargs.get("image_dir", "images")
+        # Apply wiki-folder convention (slugify) for clean folder names
+        image_dir = self._slugify(image_dir_raw)
         output_images = kwargs.get("output_images", True)
         deduplicate_images = kwargs.get("deduplicate_images", False)
         skip_background_images = kwargs.get("skip_background_images", True)
@@ -180,8 +212,11 @@ class PptxConverter(DocumentConverter):
                             deduplicate_images
                         )
                         
-                        # Generate Markdown with correct path
-                        md_content += f"\n![{alt_text}]({image_path})\n"
+                        # URL-encode path for markdown (handles any remaining special chars)
+                        encoded_path = quote(image_path, safe='/')
+                        
+                        # Generate Markdown with URL-encoded path
+                        md_content += f"\n![{alt_text}]({encoded_path})\n"
                         
                         # Increment counter if new image (not deduplicated)
                         if not deduplicated:

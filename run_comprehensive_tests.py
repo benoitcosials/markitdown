@@ -9,10 +9,41 @@ Core principle:
 """
 
 import os
+import re
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
 from markitdown import MarkItDown
+
+
+def slugify(text: str) -> str:
+    """
+    Convert text to wiki-folder convention (slug format).
+    
+    Transforms: "Kickoff QA - Essais UAT R1" → "kickoff_qa_essais_uat_r1"
+    
+    Args:
+        text: Original text with spaces and special characters
+    
+    Returns:
+        str: Slugified text (lowercase, underscores, no special chars)
+    """
+    # Normalize unicode (decompose accents)
+    text = unicodedata.normalize('NFKD', text)
+    # Remove accents
+    text = text.encode('ascii', 'ignore').decode('ascii')
+    # Convert to lowercase
+    text = text.lower()
+    # Replace spaces and hyphens with underscores
+    text = re.sub(r'[\s-]+', '_', text)
+    # Remove any remaining non-alphanumeric characters (except underscores)
+    text = re.sub(r'[^a-z0-9_]', '', text)
+    # Remove consecutive underscores
+    text = re.sub(r'_+', '_', text)
+    # Strip leading/trailing underscores
+    text = text.strip('_')
+    return text
 
 
 def process_single_pptx(pptx_file_path, output_parent_dir=None):
@@ -49,6 +80,8 @@ def process_single_pptx(pptx_file_path, output_parent_dir=None):
     
     # Image directory is SIBLING to output.md (same level)
     images_dir_name = f"{pptx_stem}_images"
+    # Slugify to match what the converter will create (wiki-folder convention)
+    images_dir_slug = slugify(images_dir_name)
     
     try:
         # Convert - images extracted relative to current directory
@@ -60,7 +93,7 @@ def process_single_pptx(pptx_file_path, output_parent_dir=None):
             md = MarkItDown()
             result = md.convert(
                 source=pptx_path,
-                image_dir=images_dir_name,
+                image_dir=images_dir_name,  # Pass original name, converter will slugify
                 output_images=True,
                 skip_background_images=True,
                 deduplicate_images=False
@@ -73,15 +106,15 @@ def process_single_pptx(pptx_file_path, output_parent_dir=None):
         output_md = output_dir / "output.md"
         output_md.write_text(result.markdown, encoding="utf-8")
         
-        # Count extracted images
-        images_dir = output_dir / images_dir_name
+        # Count extracted images - use slugified name to find actual folder
+        images_dir = output_dir / images_dir_slug
         image_count = len(list(images_dir.glob("*"))) if images_dir.exists() else 0
         
         return {
             "file": pptx_path.name,
             "status": "SUCCESS",
             "images": image_count,
-            "images_dir_name": images_dir_name,
+            "images_dir_name": images_dir_slug,  # Report slugified name
             "error": None
         }
         
