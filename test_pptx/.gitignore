@@ -1,0 +1,14 @@
+# Ignore generated output folders
+output_*/
+*_images/
+demo_output/
+test_no_dedup/
+test_with_dedup/
+
+# Ignore PPTX test files (too large for git - 27MB)
+*.pptx
+
+# Keep test reports and markdown examples
+!RAPPORT_TEST_BRIEF_01.md
+!output_concept.md
+!output_methodologie.md
