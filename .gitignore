@@ -6,6 +6,14 @@ test_default/
 test_explicit_false/
 out1a/
 out2d/
+my_images/
+
+# Python virtual environments - NEVER commit
+.venv/
+venv/
+env/
+ENV/
+*.venv/
 
 # Python cache
 __pycache__/
