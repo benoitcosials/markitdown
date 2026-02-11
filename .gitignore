@@ -1,4 +1,5 @@
-.vscode
+# .vscode (configuration workspace partagée pour agents AI)
+# NOTE: .vscode/settings.json est désormais versionnée pour configuration optimale
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
