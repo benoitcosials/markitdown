@@ -12,10 +12,6 @@
     // Python (OBLIGATOIRE)
     "ms-python.python",
     "ms-python.vscode-pylance",
-    "ms-python.debugpy",
-    
-    // Git (RECOMMANDÉ)
-    "mhutchie.git-graph",
-    "eamodio.gitlens"
+    "ms-python.debugpy"
   ]
 }
