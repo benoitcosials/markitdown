@@ -151,12 +151,12 @@ def run_comprehensive_tests():
     
     with open(report_file, "w", encoding="utf-8") as f:
         # Header
-        f.write(f"# Rapport Test Extraction PPTX\n\n")
+        f.write("# Rapport Test Extraction PPTX\n\n")
         f.write(f"**Date/Heure**: {timestamp}\n\n")
         f.write(f"**Dossier de résultats**: `pptx-result/test-{timestamp}/`\n\n")
         
         # Summary
-        f.write(f"## Résumé\n\n")
+        f.write("## Résumé\n\n")
         f.write(f"- **Total**: {len(pptx_files)} fichiers\n")
         f.write(f"- **Réussis**: {len(successful)} ✅\n")
         f.write(f"- **Échoués**: {len(failed)} ❌\n")
@@ -167,26 +167,26 @@ def run_comprehensive_tests():
         f.write(f"**Taux de réussite**: {success_rate:.1f}%\n\n")
         
         # Architecture note
-        f.write(f"## Note Architecturale\n\n")
-        f.write(f"✅ **Chemins relatifs enforces**: Tous les chemins dans les traitements utilisent des chemins relatifs\n")
-        f.write(f"✅ **Chemins absolus interdits**: Aucun chemin absolu dans la logique de traitement\n")
-        f.write(f"✅ **Markdown relatif**: Tous les liens d'images sont relatifs à output.md\n\n")
+        f.write("## Note Architecturale\n\n")
+        f.write("✅ **Chemins relatifs enforces**: Tous les chemins dans les traitements utilisent des chemins relatifs\n")
+        f.write("✅ **Chemins absolus interdits**: Aucun chemin absolu dans la logique de traitement\n")
+        f.write("✅ **Markdown relatif**: Tous les liens d'images sont relatifs à output.md\n\n")
         
         # Successful conversions
         if successful:
-            f.write(f"## Conversions Réussies ✅\n\n")
+            f.write("## Conversions Réussies ✅\n\n")
             for result in successful:
                 f.write(f"### {result['file']}\n\n")
-                f.write(f"- **Status**: SUCCESS\n")
+                f.write("- **Status**: SUCCESS\n")
                 f.write(f"- **Images**: {result['images']}\n")
                 f.write(f"- **Dossier images relatif**: `{result['images_dir_name']}/`\n\n")
         
         # Failed conversions
         if failed:
-            f.write(f"## Conversions Échouées ❌\n\n")
+            f.write("## Conversions Échouées ❌\n\n")
             for result in failed:
                 f.write(f"### {result['file']}\n\n")
-                f.write(f"- **Status**: FAILED\n")
+                f.write("- **Status**: FAILED\n")
                 f.write(f"- **Erreur**: {result['error']}\n\n")
     
     print(f"✅ Report généré: pptx-result/test-{timestamp}/test_report.md")
