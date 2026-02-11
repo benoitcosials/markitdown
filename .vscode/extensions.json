@@ -1,0 +1,21 @@
+{
+  // Extensions recommandées pour développement MarkItDown avec agents AI
+  "recommendations": [
+    // GitHub Copilot (OBLIGATOIRE pour agents)
+    "GitHub.copilot",
+    "GitHub.copilot-chat",
+    
+    // Ruff : Linter/formatter ultra-rapide (RECOMMANDÉ pour agents)
+    // 10-100x plus rapide que flake8, validation temps réel
+    "charliermarsh.ruff",
+    
+    // Python (OBLIGATOIRE)
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    
+    // Git (RECOMMANDÉ)
+    "mhutchie.git-graph",
+    "eamodio.gitlens"
+  ]
+}

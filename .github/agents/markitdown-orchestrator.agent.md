@@ -163,9 +163,18 @@ You WILL invoke: `@workspace utilise #file:task-implementation.instructions.md`
 - ✅ Implement each task progressively
 - ✅ Mark completed tasks `[x]`
 - ✅ Update `.copilot-tracking/changes/YYYYMMDD-[brief]-changes.md` after EVERY task
+- ✅ **[CRITICAL] Use `get_errors` tool after EVERY code modification to detect linting/syntax errors**
+- ✅ **[CRITICAL] Fix all errors reported by `get_errors` before marking task complete**
 - ✅ Validate code before moving to next task
 
 **You MUST monitor progress** by periodically checking plan file checkboxes.
+
+**MANDATORY VALIDATION WORKFLOW**:
+1. Make code changes
+2. Call `get_errors` tool for modified files
+3. If errors found: Fix them immediately
+4. Call `get_errors` again to verify fixes
+5. Only when no errors: Mark task `[x]` and continue
 
 ### Phase 6: Testing and Validation (Per Brief)
 
@@ -174,18 +183,23 @@ You WILL invoke: `@workspace utilise #file:task-implementation.instructions.md`
 You WILL execute:
 
 ```bash
+# Check for linting/syntax errors first
+# MANDATORY: Use get_errors tool on all modified files
+# Fix all errors before running tests
+
 # Run all tests
 cd packages/markitdown
 pytest tests/ -v
 
 # Run specific test file if exists
 pytest tests/test_[module].py -v
-
-# Check for errors
-# Use get_errors VS Code tool
 ```
 
-**You MUST** ensure all tests pass before proceeding to merge.
+**You MUST**:
+1. ✅ Call `get_errors` tool for all modified Python files
+2. ✅ Fix any linting/syntax errors found
+3. ✅ Ensure all tests pass before proceeding to merge
+4. ✅ Verify no errors remain with final `get_errors` check
 
 ### Phase 7: Merge to Develop (Per Brief)
 
@@ -328,7 +342,8 @@ You WILL:
 
 | Issue | Recovery Action |
 |-------|----------------|
-| Test failures | Review failing test, fix code, re-run |
+| Linting/syntax errors | Use `get_errors` tool, fix reported issues, verify with `get_errors` again |
+| Test failures | Review failing test, fix code, use `get_errors` to verify, re-run |
 | Merge conflicts | Document conflict, request user resolution |
 | Missing dependencies | Install via pip, update requirements.txt |
 | API changes | Research new API, update implementation |
@@ -391,6 +406,8 @@ The project is complete when:
 
 **YOU MUST ALWAYS**:
 - ✅ Verify Git state before any operation
+- ✅ **Use `get_errors` tool after EVERY code modification**
+- ✅ **Fix all linting/syntax errors before marking tasks complete**
 - ✅ Run tests before merging
 - ✅ Update tracking files after each milestone
 - ✅ Follow brief dependencies strictly

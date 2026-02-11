@@ -67,6 +67,10 @@ code .
    - Menu : Extensions → Rechercher "Python" → Installer
 
 **Extensions RECOMMANDÉES** :
+- **Ruff** (`charliermarsh.ruff`) - **VIVEMENT RECOMMANDÉ**
+  - Linter/formatter 10-100x plus rapide que flake8
+  - Validation temps réel pour agents
+  - Guide complet : [INSTALLATION_RUFF.md](INSTALLATION_RUFF.md)
 - Python Debugger (`ms-python.debugpy`)
 - Pylance (`ms-python.vscode-pylance`)
 - Git Graph (`mhutchie.git-graph`)
@@ -75,6 +79,10 @@ code .
 ```
 Ctrl+Shift+P → "Extensions: Show Installed Extensions"
 ```
+
+**OU utiliser recommendations automatiques** :
+- VS Code affiche "This workspace has extension recommendations"
+- Cliquer "Install All" pour installer automatiquement
 
 ---
 

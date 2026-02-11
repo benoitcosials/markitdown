@@ -175,6 +175,21 @@ git push origin develop
 - **Imports** : Standard library en premier, puis dépendances externes
 - **Tests** : pytest dans `packages/markitdown/tests/`
 - **Modules** : Marqueurs `# --- MODULE: [Name] (BRIEF_XX) ---` pour nouveau code
+- **Validation** : **Ruff recommandé** (linter ultra-rapide) - voir [INSTALLATION_RUFF.md](.github/INSTALLATION_RUFF.md)
+
+### Validation Automatique avec get_errors
+
+**CRITIQUE pour agents** : Utiliser `get_errors` tool après chaque modification de code :
+
+```
+1. Modifier fichier Python
+2. Appeler get_errors sur fichier modifié
+3. Si erreurs détectées → Fix immédiatement
+4. Re-appeler get_errors pour vérifier
+5. Seulement si aucune erreur → Continuer
+```
+
+**L'orchestrateur fait cela automatiquement !**
 
 ### Exemple de Structure de Module
 ```python
