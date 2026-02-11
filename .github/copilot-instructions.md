@@ -37,44 +37,72 @@ Trois briefs techniques détaillés sont disponibles à la racine du projet :
 
 ## 🤖 Workflow d'Implémentation Autonome Recommandé
 
-### Architecture : Edge AI Tasks (3 Phases)
+### Architecture : Master Orchestrator + Edge AI Tasks
 
-Pour un **codage autonome maximal**, utiliser le workflow Edge AI Tasks d'awesome-copilot :
+Pour un **codage autonome maximal**, utiliser l'agent orchestrateur master qui gère tout le cycle de développement :
 
-#### Phase 1 : Recherche (Task Researcher)
+#### 🎯 Point d'Entrée Unique : Master Orchestrator
+
 ```
-@workspace utilise #file:task-researcher.agent.md pour rechercher [BRIEF_XX]
-```
-
-**L'agent va** :
-- ✅ Analyser le codebase existant
-- ✅ Identifier les patterns et conventions
-- ✅ Rechercher documentation externe si nécessaire
-- ✅ Créer `.copilot-tracking/research/YYYYMMDD-[task]-research.md`
-
-#### Phase 2 : Planification (Task Planner)
-```
-@workspace utilise #file:task-planner.agent.md pour créer un plan d'implémentation pour [BRIEF_XX]
+@workspace utilise #file:markitdown-orchestrator.agent.md pour [commande]
 ```
 
-**L'agent va** :
-- ✅ Lire le research file
-- ✅ Créer 3 fichiers structurés :
-  - `.copilot-tracking/plans/YYYYMMDD-[task]-plan.instructions.md` (checkboxes)
-  - `.copilot-tracking/details/YYYYMMDD-[task]-details.md` (détails techniques)
-  - `.copilot-tracking/prompts/implement-[task].prompt.md` (prompt d'implémentation)
+**Commandes disponibles** :
+- `commencer BRIEF_01` - Démarre le développement (détection automatique de la phase)
+- `continuer` - Reprend le développement où il était
+- `status` - Affiche l'état actuel du projet
+- `brief suivant` - Passe au brief suivant (après complétion)
 
-#### Phase 3 : Implémentation (Task Implementation)
-```
-@workspace utilise #file:task-implementation.instructions.md pour implémenter le plan
+**L'orchestrateur va** :
+- ✅ Analyser automatiquement l'état du projet (Git, tracking files)
+- ✅ Déterminer la phase nécessaire (recherche, plan, implémentation)
+- ✅ Orchestrer les agents spécialisés selon la phase :
+  - `task-researcher.agent.md` pour la recherche
+  - `task-planner.agent.md` pour la planification
+  - `task-implementation.instructions.md` pour l'implémentation
+- ✅ Gérer le workflow Git (branches, commits, merge)
+- ✅ Valider les tests et respecter les standards
+- ✅ Gérer les dépendances entre briefs
+- ✅ Fournir des rapports de progression concis
+
+#### 🔄 Workflow Automatique (Orchestré)
+
+**Phase 1 : Recherche** (orchestrée automatiquement)
+- L'orchestrateur invoque `task-researcher.agent.md`
+- Crée `.copilot-tracking/research/YYYYMMDD-[brief]-research.md`
+
+**Phase 2 : Planification** (orchestrée automatiquement)
+- L'orchestrateur invoque `task-planner.agent.md`
+- Crée 3 fichiers :
+  - `.copilot-tracking/plans/YYYYMMDD-[brief]-plan.instructions.md` (checkboxes)
+  - `.copilot-tracking/details/YYYYMMDD-[brief]-details.md` (détails techniques)
+  - `.copilot-tracking/prompts/implement-[brief].prompt.md` (prompt d'implémentation)
+
+**Phase 3 : Implémentation** (orchestrée automatiquement)
+- L'orchestrateur invoque `task-implementation.instructions.md`
+- Implémente progressivement avec validation continue
+- Met à jour `.copilot-tracking/changes/YYYYMMDD-[brief]-changes.md`
+
+**Phase 4 : Tests & Merge** (orchestrée automatiquement)
+- L'orchestrateur exécute les tests
+- Merge dans develop si tous les tests passent
+- Push vers GitHub
+
+#### 🆚 Ancienne vs Nouvelle Méthode
+
+**Ancienne (3 commandes manuelles)** :
+```bash
+@workspace utilise #file:task-researcher.agent.md pour BRIEF_01
+@workspace utilise #file:task-planner.agent.md pour BRIEF_01  
+@workspace utilise #file:task-implementation.instructions.md
 ```
 
-**L'agent va** :
-- ✅ Lire le plan complet avec checkboxes
-- ✅ Implémenter chaque tâche progressivement
-- ✅ Marquer les tâches complètes `[x]`
-- ✅ Mettre à jour `.copilot-tracking/changes/YYYYMMDD-[task]-changes.md` après chaque tâche
-- ✅ Valider le code avant de continuer
+**Nouvelle (1 commande orchestrée)** :
+```bash
+@workspace utilise #file:markitdown-orchestrator.agent.md pour commencer BRIEF_01
+```
+
+L'orchestrateur gère automatiquement les 3 phases + Git + tests + merge !
 
 ### Structure Générée
 
@@ -292,7 +320,22 @@ git status
 git log --oneline -5
 ```
 
-### Référencer un Agent
+### Commandes Orchestrateur (RECOMMANDÉ)
+```
+# Démarrer le développement (détection automatique)
+@workspace utilise #file:markitdown-orchestrator.agent.md pour commencer BRIEF_01
+
+# Reprendre après interruption
+@workspace utilise #file:markitdown-orchestrator.agent.md pour continuer
+
+# Vérifier l'état actuel
+@workspace utilise #file:markitdown-orchestrator.agent.md pour status
+
+# Passer au brief suivant
+@workspace utilise #file:markitdown-orchestrator.agent.md pour brief suivant
+```
+
+### Agents Spécialisés (Si orchestration manuelle nécessaire)
 ```
 @workspace utilise #file:task-researcher.agent.md pour [tâche]
 @workspace utilise #file:task-planner.agent.md pour [tâche]

@@ -30,16 +30,59 @@ Le fichier **`.github/copilot-instructions.md`** est automatiquement chargé par
 
 ## 2️⃣ Agents Awesome-Copilot (Déjà Activés)
 
-### Configuration MCP Awesome-Copilot
+### 🎯 Master Orchestrator (RECOMMANDÉ)
 
-Les agents suivants sont **déjà disponibles** via l'extension awesome-copilot installée dans VS Code :
+**Point d'entrée unique** pour tout le développement :
 
-#### Agents Disponibles
-1. **task-researcher.agent.md** - Recherche approfondie du codebase
-2. **task-planner.agent.md** - Planification structurée avec tracking
-3. **task-implementation.instructions.md** - Implémentation autonome progressive
+**`.github/agents/markitdown-orchestrator.agent.md`** - Agent orchestrateur master
+- ✅ Analyse automatique de l'état du projet (Git + tracking files)
+- ✅ Détection intelligente de la phase nécessaire
+- ✅ Orchestration des agents spécialisés (researcher, planner, implementation)
+- ✅ Gestion Git complète (branches, commits, merge)
+- ✅ Validation des tests avant merge
+- ✅ Gestion des dépendances entre briefs
+- ✅ Rapports de progression automatiques
 
-### Comment Utiliser
+#### Commandes Master Orchestrator
+```bash
+# Démarrer le développement (détection automatique de la phase)
+@workspace utilise #file:markitdown-orchestrator.agent.md pour commencer BRIEF_01
+
+# Reprendre après interruption (détection du checkpoint)
+@workspace utilise #file:markitdown-orchestrator.agent.md pour continuer
+
+# Vérifier l'état actuel du projet
+@workspace utilise #file:markitdown-orchestrator.agent.md pour status
+
+# Passer au brief suivant (après complétion)
+@workspace utilise #file:markitdown-orchestrator.agent.md pour brief suivant
+```
+
+### Edge AI Tasks (Agents Spécialisés - Orchestrés Automatiquement)
+
+Ces agents sont **orchestrés automatiquement** par le master orchestrator :
+
+1. **task-researcher.agent.md** (Phase 1 : Recherche)
+   - Analyse complète du codebase
+   - Recherche de patterns et conventions
+   - Documentation externe
+   - Crée `.copilot-tracking/research/YYYYMMDD-[brief]-research.md`
+
+2. **task-planner.agent.md** (Phase 2 : Planification)
+   - Validation du research
+   - Création plan structuré avec checkboxes
+   - Détails techniques + prompt d'implémentation
+   - Crée 3 fichiers dans `.copilot-tracking/plans/`, `details/`, `prompts/`
+
+3. **task-implementation.instructions.md** (Phase 3 : Implémentation)
+   - Lecture du plan complet
+   - Implémentation progressive tâche par tâche
+   - Marquage `[x]` des tâches complètes
+   - Mise à jour obligatoire de `changes.md` après chaque tâche
+
+#### Invocation Manuelle (Si Nécessaire)
+
+Si vous souhaitez un contrôle fin sur chaque phase :
 ```
 @workspace utilise #file:task-researcher.agent.md pour [description]
 @workspace utilise #file:task-planner.agent.md pour [description]
@@ -47,7 +90,8 @@ Les agents suivants sont **déjà disponibles** via l'extension awesome-copilot 
 ```
 
 **Persistence** :
-- ✅ Agents chargés automatiquement via extension awesome-copilot
+- ✅ Master orchestrator commité dans le repo (`.github/agents/`)
+- ✅ Agents spécialisés chargés automatiquement via extension awesome-copilot
 - ✅ Disponibles dans toutes les sessions VS Code
 - ✅ Pas de configuration par projet nécessaire
 
