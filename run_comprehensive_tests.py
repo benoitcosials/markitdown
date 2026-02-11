@@ -12,11 +12,11 @@ Results structure:
         └── test_report.md
 """
 
-from markitdown import MarkItDown
 import os
-import shutil
 from datetime import datetime
 from pathlib import Path
+
+from markitdown import MarkItDown
 
 
 def run_comprehensive_tests():
@@ -41,13 +41,16 @@ def run_comprehensive_tests():
         return
     
     print("=" * 80)
-    print(f"TEST COMPLET EXTRACTION PPTX")
+    print("TEST COMPLET EXTRACTION PPTX")
     print(f"Timestamp: {timestamp}")
     print(f"Repertoire: {test_session_dir}")
     print("=" * 80 + "\n")
     
     md = MarkItDown()
     results = []
+    
+    # Save original working directory
+    original_cwd = os.getcwd()
     
     for idx, pptx_file in enumerate(pptx_files, 1):
         pptx_name = pptx_file.stem
@@ -56,22 +59,34 @@ def run_comprehensive_tests():
         pptx_output_dir = test_session_dir / pptx_name
         pptx_output_dir.mkdir(exist_ok=True)
         
+        # Get absolute path BEFORE changing directory
+        pptx_output_dir_abs = pptx_output_dir.resolve()
+        
         image_dir = pptx_output_dir / f"{pptx_name}_images"
         
         try:
+            # Change to output directory for proper relative image paths
+            os.chdir(str(pptx_output_dir))
+            
+            # Use relative image directory (relative to output.md location)
+            relative_image_dir = f"{pptx_name}_images"
+            
             result = md.convert(
-                str(pptx_file),
-                image_dir=str(image_dir),
+                str(Path(original_cwd) / pptx_file),
+                image_dir=relative_image_dir,
                 output_images=True,
                 skip_background_images=True,
                 deduplicate_images=False
             )
             
-            output_md_file = pptx_output_dir / "output.md"
+            # Use absolute path since we changed directory
+            output_md_file = pptx_output_dir_abs / "output.md"
             with open(output_md_file, "w", encoding="utf-8") as f:
                 f.write(result.markdown)
             
-            image_count = len(list(image_dir.glob("*"))) if image_dir.exists() else 0
+            # Count images in the actual directory (use absolute path)
+            image_dir_abs = pptx_output_dir_abs / f"{pptx_name}_images"
+            image_count = len(list(image_dir_abs.glob("*"))) if image_dir_abs.exists() else 0
             
             results.append({
                 "file": pptx_file.name,
@@ -93,6 +108,10 @@ def run_comprehensive_tests():
             })
             
             print(f"  FAILED: {str(e)}")
+        
+        finally:
+            # Restore original working directory
+            os.chdir(original_cwd)
     
     # Generate report
     print("\n" + "=" * 80)
@@ -101,7 +120,7 @@ def run_comprehensive_tests():
     
     report_file = test_session_dir / "test_report.md"
     with open(report_file, "w", encoding="utf-8") as f:
-        f.write(f"# Rapport Test PPTX\n\n")
+        f.write("# Rapport Test PPTX\n\n")
         f.write(f"Date: {datetime.now().strftime(('%Y-%m-%d %H:%M:%S'))}\n")
         f.write(f"Repertoire: `{test_session_dir}`\n\n")
         
@@ -121,11 +140,11 @@ def run_comprehensive_tests():
             f.write(f"### {result['file']}\n\n")
             
             if result["status"] == "SUCCESS":
-                f.write(f"- Status: Success\n")
+                f.write("- Status: Success\n")
                 f.write(f"- Images: {result['images']}\n")
                 f.write(f"- Markdown: {result['output']}\n")
             else:
-                f.write(f"- Status: Failed\n")
+                f.write("- Status: Failed\n")
                 f.write(f"- Erreur: {result['error']}\n")
             
             f.write("\n")
