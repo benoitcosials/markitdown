@@ -2,7 +2,6 @@
   // Extensions recommandées pour développement MarkItDown avec agents AI
   "recommendations": [
     // GitHub Copilot (OBLIGATOIRE pour agents)
-    "GitHub.copilot",
     "GitHub.copilot-chat",
     
     // Ruff : Linter/formatter ultra-rapide (RECOMMANDÉ pour agents)
