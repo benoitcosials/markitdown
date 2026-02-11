@@ -5,6 +5,7 @@ import io
 import re
 import html
 import hashlib  # For MD5 deduplication
+from pathlib import Path
 
 from typing import BinaryIO, Any
 from operator import attrgetter
@@ -89,6 +90,7 @@ class PptxConverter(DocumentConverter):
         image_dir = kwargs.get("image_dir", "images")
         output_images = kwargs.get("output_images", True)
         deduplicate_images = kwargs.get("deduplicate_images", False)
+        skip_background_images = kwargs.get("skip_background_images", True)
         self._image_hashes = {}  # Reset for each conversion
         # --- END MODULE ---
         
@@ -106,6 +108,11 @@ class PptxConverter(DocumentConverter):
                 nonlocal image_count  # For sequential image naming
                 # Pictures
                 if self._is_picture(shape):
+                    # --- MODULE: Skip Background Images (BRIEF_01) ---
+                    skip_bg = kwargs.get("skip_background_images", True)
+                    if skip_bg and self._is_background_image(shape):
+                        return  # Skip this background image
+                    # --- END MODULE ---
                     # https://github.com/scanny/python-pptx/pull/512#issuecomment-1713100069
 
                     llm_description = ""
@@ -251,6 +258,34 @@ class PptxConverter(DocumentConverter):
             return True
         return False
 
+    # --- MODULE: Background Image Detection (BRIEF_01) ---
+    def _is_background_image(self, shape):
+        """
+        Determine if a shape is a background image placeholder.
+        
+        Background placeholders are identified by their type using
+        the official python-pptx PP_PLACEHOLDER_TYPE enum.
+        
+        Returns:
+            bool: True if shape is a background image, False otherwise
+        """
+        try:
+            # Only placeholders can be backgrounds
+            if shape.shape_type != pptx.enum.shapes.MSO_SHAPE_TYPE.PLACEHOLDER:
+                return False
+            
+            # Check placeholder type against background types
+            pf = shape.placeholder_format
+            background_types = [
+                pptx.enum.shapes.PP_PLACEHOLDER_TYPE.PICTURE,      # ID 18
+                pptx.enum.shapes.PP_PLACEHOLDER_TYPE.SLIDE_IMAGE   # ID 101
+            ]
+            return pf.type in background_types
+        except:
+            # If unable to determine, assume it's not a background
+            return False
+    # --- END MODULE ---
+
     # --- MODULE: Image Extraction (BRIEF_01) ---
     def _get_image_extension(
         self, 
@@ -334,13 +369,19 @@ class PptxConverter(DocumentConverter):
         
         # Generate filename: slide{N}_image{M}.{ext}
         image_filename = f"slide{slide_num}_image{image_count}{ext}"
-        image_path = os.path.join(image_dir, image_filename)
+        
+        # --- MODULE: Cross-platform Path Handling (BRIEF_01 - Solution 1A) ---
+        # Use pathlib.Path for cross-platform paths, convert to Unix format
+        image_path_obj = Path(image_dir) / image_filename
+        image_path = image_path_obj.as_posix()  # Always use forward slashes
+        disk_path = str(image_path_obj)  # Use OS-specific path for disk operations
+        # --- END MODULE ---
         
         # Create directory if needed
         os.makedirs(image_dir, exist_ok=True)
         
         # Save file to disk
-        with open(image_path, 'wb') as f:
+        with open(disk_path, 'wb') as f:
             f.write(blob)
         
         # Store hash for future deduplication
