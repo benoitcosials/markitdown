@@ -1,20 +1,21 @@
-import sys
 import base64
-import os
-import io
-import re
-import html
 import hashlib  # For MD5 deduplication
+import html
+import io
+import os
+import re
+import sys
 from pathlib import Path
+from typing import Any, BinaryIO
 
-from typing import BinaryIO, Any
-from operator import attrgetter
-
+from .._base_converter import DocumentConverter, DocumentConverterResult
+from .._exceptions import (
+    MISSING_DEPENDENCY_MESSAGE,
+    MissingDependencyException,
+)
+from .._stream_info import StreamInfo
 from ._html_converter import HtmlConverter
 from ._llm_caption import llm_caption
-from .._base_converter import DocumentConverter, DocumentConverterResult
-from .._stream_info import StreamInfo
-from .._exceptions import MissingDependencyException, MISSING_DEPENDENCY_MESSAGE
 
 # Try loading optional (but in this case, required) dependencies
 # Save reporting of any exceptions for later

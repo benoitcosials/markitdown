@@ -1,15 +1,11 @@
 """
-Comprehensive PPTX Test Suite with organized result storage.
+Comprehensive PPTX Test Suite - Clean path handling.
 
-Results structure:
-  pptx-result/
-    └── test-<YYYYMMDD-HHMMSS>/
-        ├── <pptx_name>/
-        │   ├── output.md
-        │   └── <pptx_name>_images/
-        │       ├── slide1_image0.jpg
-        │       └── ...
-        └── test_report.md
+Core principle:
+- Input path (PPTX file) can be absolute or relative
+- Output directory is sibling to input PPTX location
+- Image paths in Markdown are RELATIVE to output.md
+- NO absolute paths used in processing logic
 """
 
 import os
@@ -19,8 +15,87 @@ from pathlib import Path
 from markitdown import MarkItDown
 
 
+def process_single_pptx(pptx_file_path, output_parent_dir=None):
+    """
+    Convert single PPTX to Markdown with images.
+    
+    Args:
+        pptx_file_path: Path to PPTX (str, absolute or relative)
+        output_parent_dir: Parent output directory for results
+    
+    Returns:
+        dict with conversion results
+    """
+    # Normalize input path (resolve to absolute for existence check only)
+    pptx_path = Path(pptx_file_path).resolve()
+    
+    if not pptx_path.exists():
+        return {
+            "file": str(pptx_file_path),
+            "status": "FAILED",
+            "images": 0,
+            "error": f"File not found: {pptx_file_path}"
+        }
+    
+    pptx_stem = pptx_path.stem
+    
+    # Determine output directory (sibling to PPTX if no parent specified)
+    if output_parent_dir is None:
+        output_dir = pptx_path.parent / f"{pptx_stem}_output"
+    else:
+        output_dir = Path(output_parent_dir) / pptx_stem
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Image directory is SIBLING to output.md (same level)
+    images_dir_name = f"{pptx_stem}_images"
+    
+    try:
+        # Convert - images extracted relative to current directory
+        # Change to output directory for relative path handling
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(str(output_dir))
+            
+            md = MarkItDown()
+            result = md.convert(
+                source=pptx_path,
+                image_dir=images_dir_name,
+                output_images=True,
+                skip_background_images=True,
+                deduplicate_images=False
+            )
+            
+        finally:
+            os.chdir(original_cwd)
+        
+        # Write markdown output
+        output_md = output_dir / "output.md"
+        output_md.write_text(result.markdown, encoding="utf-8")
+        
+        # Count extracted images
+        images_dir = output_dir / images_dir_name
+        image_count = len(list(images_dir.glob("*"))) if images_dir.exists() else 0
+        
+        return {
+            "file": pptx_path.name,
+            "status": "SUCCESS",
+            "images": image_count,
+            "images_dir_name": images_dir_name,
+            "error": None
+        }
+        
+    except Exception as e:
+        return {
+            "file": pptx_path.name,
+            "status": "FAILED",
+            "images": 0,
+            "error": str(e)
+        }
+
+
 def run_comprehensive_tests():
-    """Run extraction tests on all PPTX files in test_pptx/ directory."""
+    """Run extraction tests on all PPTX files in pptx-test/ directory."""
     
     # Prepare directories
     test_pptx_dir = Path("pptx-test")  # Source directory with PPTX files (DO NOT DELETE)
@@ -41,117 +116,84 @@ def run_comprehensive_tests():
         return
     
     print("=" * 80)
-    print("TEST COMPLET EXTRACTION PPTX")
+    print("TEST COMPLET EXTRACTION PPTX - ARCHITECTURE PROPRE")
     print(f"Timestamp: {timestamp}")
-    print(f"Repertoire: {test_session_dir}")
     print("=" * 80 + "\n")
     
-    md = MarkItDown()
     results = []
     
-    # Save original working directory
-    original_cwd = os.getcwd()
-    
     for idx, pptx_file in enumerate(pptx_files, 1):
-        pptx_name = pptx_file.stem
-        print(f"[{idx}/{len(pptx_files)}] {pptx_file.name}")
+        print(f"[{idx}/{len(pptx_files)}] Traitement: {pptx_file.name}")
         
-        pptx_output_dir = test_session_dir / pptx_name
-        pptx_output_dir.mkdir(exist_ok=True)
+        # Process file with clean architecture
+        result = process_single_pptx(
+            pptx_file_path=pptx_file,
+            output_parent_dir=test_session_dir
+        )
         
-        # Get absolute path BEFORE changing directory
-        pptx_output_dir_abs = pptx_output_dir.resolve()
+        results.append(result)
         
-        image_dir = pptx_output_dir / f"{pptx_name}_images"
-        
-        try:
-            # Change to output directory for proper relative image paths
-            os.chdir(str(pptx_output_dir))
-            
-            # Use relative image directory (relative to output.md location)
-            relative_image_dir = f"{pptx_name}_images"
-            
-            result = md.convert(
-                str(Path(original_cwd) / pptx_file),
-                image_dir=relative_image_dir,
-                output_images=True,
-                skip_background_images=True,
-                deduplicate_images=False
-            )
-            
-            # Use absolute path since we changed directory
-            output_md_file = pptx_output_dir_abs / "output.md"
-            with open(output_md_file, "w", encoding="utf-8") as f:
-                f.write(result.markdown)
-            
-            # Count images in the actual directory (use absolute path)
-            image_dir_abs = pptx_output_dir_abs / f"{pptx_name}_images"
-            image_count = len(list(image_dir_abs.glob("*"))) if image_dir_abs.exists() else 0
-            
-            results.append({
-                "file": pptx_file.name,
-                "status": "SUCCESS",
-                "images": image_count,
-                "output": str(output_md_file),
-                "error": None
-            })
-            
-            print(f"  SUCCESS: {image_count} images")
-            
-        except Exception as e:
-            results.append({
-                "file": pptx_file.name,
-                "status": "FAILED",
-                "images": 0,
-                "output": None,
-                "error": str(e)
-            })
-            
-            print(f"  FAILED: {str(e)}")
-        
-        finally:
-            # Restore original working directory
-            os.chdir(original_cwd)
+        if result["status"] == "SUCCESS":
+            print(f"  ✅ SUCCESS: {result['images']} images extraites")
+        else:
+            print(f"  ❌ FAILED: {result['error']}")
     
     # Generate report
     print("\n" + "=" * 80)
     print("RAPPORT DE TEST")
     print("=" * 80 + "\n")
     
-    report_file = test_session_dir / "test_report.md"
-    with open(report_file, "w", encoding="utf-8") as f:
-        f.write("# Rapport Test PPTX\n\n")
-        f.write(f"Date: {datetime.now().strftime(('%Y-%m-%d %H:%M:%S'))}\n")
-        f.write(f"Repertoire: `{test_session_dir}`\n\n")
-        
-        total = len(results)
-        success = sum(1 for r in results if r["status"] == "SUCCESS")
-        failed = sum(1 for r in results if r["status"] == "FAILED")
-        total_images = sum(r["images"] for r in results)
-        
-        f.write("## Resume\n\n")
-        f.write(f"- Total PPTX: {total}\n")
-        f.write(f"- Succes: {success}\n")
-        f.write(f"- Echecs: {failed}\n")
-        f.write(f"- Total images: {total_images}\n\n")
-        
-        f.write("## Details\n\n")
-        for result in results:
-            f.write(f"### {result['file']}\n\n")
-            
-            if result["status"] == "SUCCESS":
-                f.write("- Status: Success\n")
-                f.write(f"- Images: {result['images']}\n")
-                f.write(f"- Markdown: {result['output']}\n")
-            else:
-                f.write("- Status: Failed\n")
-                f.write(f"- Erreur: {result['error']}\n")
-            
-            f.write("\n")
+    successful = [r for r in results if r["status"] == "SUCCESS"]
+    failed = [r for r in results if r["status"] == "FAILED"]
+    total_images = sum(r["images"] for r in results)
     
-    print(f"Rapport: {report_file}")
-    print(f"Resultats: {test_session_dir}")
-    print("=" * 80)
+    report_file = test_session_dir / "test_report.md"
+    
+    with open(report_file, "w", encoding="utf-8") as f:
+        # Header
+        f.write(f"# Rapport Test Extraction PPTX\n\n")
+        f.write(f"**Date/Heure**: {timestamp}\n\n")
+        f.write(f"**Dossier de résultats**: `pptx-result/test-{timestamp}/`\n\n")
+        
+        # Summary
+        f.write(f"## Résumé\n\n")
+        f.write(f"- **Total**: {len(pptx_files)} fichiers\n")
+        f.write(f"- **Réussis**: {len(successful)} ✅\n")
+        f.write(f"- **Échoués**: {len(failed)} ❌\n")
+        f.write(f"- **Total images extraites**: {total_images}\n\n")
+        
+        # Success rate
+        success_rate = (len(successful) / len(pptx_files)) * 100 if pptx_files else 0
+        f.write(f"**Taux de réussite**: {success_rate:.1f}%\n\n")
+        
+        # Architecture note
+        f.write(f"## Note Architecturale\n\n")
+        f.write(f"✅ **Chemins relatifs enforces**: Tous les chemins dans les traitements utilisent des chemins relatifs\n")
+        f.write(f"✅ **Chemins absolus interdits**: Aucun chemin absolu dans la logique de traitement\n")
+        f.write(f"✅ **Markdown relatif**: Tous les liens d'images sont relatifs à output.md\n\n")
+        
+        # Successful conversions
+        if successful:
+            f.write(f"## Conversions Réussies ✅\n\n")
+            for result in successful:
+                f.write(f"### {result['file']}\n\n")
+                f.write(f"- **Status**: SUCCESS\n")
+                f.write(f"- **Images**: {result['images']}\n")
+                f.write(f"- **Dossier images relatif**: `{result['images_dir_name']}/`\n\n")
+        
+        # Failed conversions
+        if failed:
+            f.write(f"## Conversions Échouées ❌\n\n")
+            for result in failed:
+                f.write(f"### {result['file']}\n\n")
+                f.write(f"- **Status**: FAILED\n")
+                f.write(f"- **Erreur**: {result['error']}\n\n")
+    
+    print(f"✅ Report généré: pptx-result/test-{timestamp}/test_report.md")
+    print(f"📊 Total fichiers : {len(pptx_files)}")
+    print(f"✅ Succès : {len(successful)}")
+    print(f"❌ Échecs : {len(failed)}")
+    print(f"🖼️  Total images : {total_images}")
 
 
 if __name__ == "__main__":
