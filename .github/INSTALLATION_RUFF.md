@@ -17,7 +17,10 @@
 
 1. **Ouvrir Extensions** : `Ctrl+Shift+X`
 2. **Rechercher** : "Ruff"
-3. **Installer** : Extension par **Astral Software** (`charliermarsh.ruff`)
+3. **Installer** : Extension officielle avec ID **`charliermarsh.ruff`**
+   - Éditeur : Charlie Marsh (créateur de Ruff)
+   - Note : Astral (astral.sh) développe Ruff, mais l'extension garde l'ID `charliermarsh.ruff`
+   - ⚠️ **Vérifier l'ID** : Il existe peut-être d'autres extensions non-officielles
 4. **Recharger** : `Ctrl+Shift+P` → "Developer: Reload Window"
 
 ### Méthode 2 : Via Commande
@@ -47,6 +50,20 @@ VS Code proposera automatiquement l'installation.
 ---
 
 ## ✅ Validation Installation
+
+### Test 0 : Vérifier Extension Installée Correctement
+
+**Dans VS Code Extensions** :
+```
+Ctrl+Shift+X → Rechercher "Ruff installé"
+```
+
+**Vérifier l'ID** : Doit afficher `charliermarsh.ruff`  
+**OU en PowerShell** :
+```powershell
+code --list-extensions | Select-String "ruff"
+# Résultat attendu : charliermarsh.ruff
+```
 
 ### Test 1 : Vérifier Extension Active
 

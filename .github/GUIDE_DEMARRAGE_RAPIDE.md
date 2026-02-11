@@ -240,11 +240,29 @@ L'orchestrateur va :
 
 **Durée estimée** : ~30-40 minutes (avec supervision)
 
-### Option 2 : Valider d'Abord (Nouvelle Instance)
+### Option 2 : Configuration MCP pour Testeurs (Après Développement)
 
-1. Configurer nouvelle instance selon [SETUP_NOUVEAU_VSCODE.md](.github/SETUP_NOUVEAU_VSCODE.md)
-2. Tester orchestrateur : `@workspace utilise #file:markitdown-orchestrator.agent.md pour status`
-3. Si validation OK, revenir à instance principale et lancer Option 1
+Une fois BRIEF_01 prêt, partager config MCP aux testeurs :
+
+```json
+{
+  "mcpServers": {
+    "markitdown-dev": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "markitdown_mcp",
+        "--source",
+        "git+https://github.com/benoitcosials/markitdown.git@develop"
+      ]
+    }
+  }
+}
+```
+
+Testeurs peuvent alors utiliser votre code `develop` en conditions réelles.  
+Voir [ARCHITECTURE_SETUP_FINAL.md](.github/ARCHITECTURE_SETUP_FINAL.md) pour détails.
 
 ---
 
@@ -254,8 +272,9 @@ L'orchestrateur va :
 |----------|---------|
 | [copilot-instructions.md](.github/copilot-instructions.md) | Instructions workspace auto-chargées |
 | [markitdown-orchestrator.agent.md](.github/agents/markitdown-orchestrator.agent.md) | Agent orchestrateur complet (600+ lignes) |
+| [ARCHITECTURE_SETUP_FINAL.md](.github/ARCHITECTURE_SETUP_FINAL.md) | Architecture dev + test + testeurs (RECOMMANDÉ) |
 | [CONFIGURATION_MODELES_LLM.md](.github/CONFIGURATION_MODELES_LLM.md) | Modèles, coûts, optimisations |
-| [SETUP_NOUVEAU_VSCODE.md](.github/SETUP_NOUVEAU_VSCODE.md) | Configuration nouvelle instance VS Code |
+| [INSTALLATION_RUFF.md](.github/INSTALLATION_RUFF.md) | Installation et utilisation Ruff |
 | [PERSISTENCE_AI_SETUP.md](.github/PERSISTENCE_AI_SETUP.md) | Persistence entre sessions |
 | [MON_ROADMAP.md](MON_ROADMAP.md) | Vision globale 10+ features |
 | [MON_PROCESS_DE_CONTRIBUTION.md](MON_PROCESS_DE_CONTRIBUTION.md) | Workflow Git complet |

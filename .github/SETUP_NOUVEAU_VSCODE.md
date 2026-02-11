@@ -67,7 +67,8 @@ code .
    - Menu : Extensions → Rechercher "Python" → Installer
 
 **Extensions RECOMMANDÉES** :
-- **Ruff** (`charliermarsh.ruff`) - **VIVEMENT RECOMMANDÉ**
+- **Ruff** (ID: `charliermarsh.ruff`) - **VIVEMENT RECOMMANDÉ**
+  - ⚠️ Installer celle avec l'ID `charliermarsh.ruff` (extension officielle)
   - Linter/formatter 10-100x plus rapide que flake8
   - Validation temps réel pour agents
   - Guide complet : [INSTALLATION_RUFF.md](INSTALLATION_RUFF.md)
