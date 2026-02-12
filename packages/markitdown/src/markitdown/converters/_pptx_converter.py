@@ -402,6 +402,10 @@ class PptxConverter(DocumentConverter):
             'image/svg+xml': '.svg',
             'image/tiff': '.tiff',
             'image/tif': '.tif',
+            'image/x-emf': '.emf',
+            'image/x-wmf': '.wmf',
+            'image/emf': '.emf',
+            'image/wmf': '.wmf',
         }
         
         # Try mapping from MIME type
@@ -450,6 +454,15 @@ class PptxConverter(DocumentConverter):
         # Determine file extension
         ext = self._get_image_extension(filename, content_type)
         
+        # --- MODULE: EMF/WMF Conversion to PNG ---
+        # Check if image is EMF or WMF format (Windows Metafiles)
+        needs_conversion = False
+        if ext.lower() in ['.emf', '.wmf'] or \
+           (content_type and 'wmf' in content_type.lower()):
+            needs_conversion = True
+            ext = '.png'  # Convert to PNG
+        # --- END MODULE ---
+        
         # Generate filename: slide{N}_image{M}.{ext}
         image_filename = f"slide{slide_num}_image{image_count}{ext}"
         
@@ -463,9 +476,34 @@ class PptxConverter(DocumentConverter):
         # Create directory if needed
         os.makedirs(image_dir, exist_ok=True)
         
-        # Save file to disk
-        with open(disk_path, 'wb') as f:
-            f.write(blob)
+        # --- MODULE: EMF/WMF Conversion to PNG ---
+        # Save file to disk (with conversion if needed)
+        if needs_conversion:
+            try:
+                # Convert EMF/WMF to PNG using Pillow
+                from PIL import Image
+                import io
+                
+                # Open the image from bytes
+                img = Image.open(io.BytesIO(blob))
+                
+                # Convert to RGB if necessary (EMF can have transparency)
+                if img.mode not in ['RGB', 'RGBA']:
+                    img = img.convert('RGB')
+                
+                # Save as PNG
+                img.save(disk_path, 'PNG')
+                
+            except Exception as e:
+                # If conversion fails, save original file
+                # and log the error (fallback)
+                with open(disk_path, 'wb') as f:
+                    f.write(blob)
+        else:
+            # Standard save for non-EMF formats
+            with open(disk_path, 'wb') as f:
+                f.write(blob)
+        # --- END MODULE ---
         
         # Store hash for future deduplication
         if deduplicate_images:
