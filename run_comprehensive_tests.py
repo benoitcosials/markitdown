@@ -140,8 +140,9 @@ def run_comprehensive_tests():
     test_session_dir = pptx_result_dir / f"test-{timestamp}"
     test_session_dir.mkdir(parents=True, exist_ok=True)
     
-    # List all PPTX files
+    # List all PPTX files (exclude temporary Office files)
     pptx_files = sorted(test_pptx_dir.glob("*.pptx"))
+    pptx_files = [f for f in pptx_files if not f.name.startswith('~$')]
     
     if not pptx_files:
         print(f"Aucun fichier .pptx trouvé dans {test_pptx_dir}")
