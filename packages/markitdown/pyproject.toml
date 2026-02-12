@@ -49,8 +49,9 @@ all = [
   "youtube-transcript-api~=1.0.0",
   "azure-ai-documentintelligence",
   "azure-identity",
+  "Pillow",
 ]
-pptx = ["python-pptx"]
+pptx = ["python-pptx", "Pillow"]
 docx = ["mammoth~=1.11.0", "lxml"]
 xlsx = ["pandas", "openpyxl"]
 xls = ["pandas", "xlrd"]

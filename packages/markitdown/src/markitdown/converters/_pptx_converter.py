@@ -457,6 +457,7 @@ class PptxConverter(DocumentConverter):
         # --- MODULE: EMF/WMF Conversion to PNG ---
         # Check if image is EMF or WMF format (Windows Metafiles)
         needs_conversion = False
+        original_ext = ext  # Save original extension for error messages
         if ext.lower() in ['.emf', '.wmf'] or \
            (content_type and 'wmf' in content_type.lower()):
             needs_conversion = True
@@ -481,8 +482,9 @@ class PptxConverter(DocumentConverter):
         if needs_conversion:
             try:
                 # Convert EMF/WMF to PNG using Pillow
-                from PIL import Image
                 import io
+
+                from PIL import Image
                 
                 # Open the image from bytes
                 img = Image.open(io.BytesIO(blob))
@@ -494,9 +496,20 @@ class PptxConverter(DocumentConverter):
                 # Save as PNG
                 img.save(disk_path, 'PNG')
                 
+            except ImportError:
+                # Pillow not installed - save original file and warn user
+                import warnings
+                warnings.warn(
+                    f"Pillow not installed. Cannot convert {original_ext} to PNG. "
+                    "Install with: pip install markitdown[pptx]",
+                    ImportWarning
+                )
+                with open(disk_path, 'wb') as f:
+                    f.write(blob)
             except Exception as e:
-                # If conversion fails, save original file
-                # and log the error (fallback)
+                # Other conversion errors - save original file
+                import warnings
+                warnings.warn(f"Failed to convert {original_ext} to PNG: {e}", RuntimeWarning)
                 with open(disk_path, 'wb') as f:
                     f.write(blob)
         else:
