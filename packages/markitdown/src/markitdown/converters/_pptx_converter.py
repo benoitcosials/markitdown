@@ -512,14 +512,21 @@ class PptxConverter(DocumentConverter):
                     "Install with: pip install markitdown[pptx]",
                     ImportWarning
                 )
+                # Save as original WMF/EMF file instead of PNG
+                disk_path = str(Path(image_dir) / f"slide{slide_num}_image{image_count}{original_ext}")
                 with open(disk_path, 'wb') as f:
                     f.write(blob)
+                image_path = Path(disk_path).relative_to(Path(image_dir).parent).as_posix()
             except Exception as e:
-                # Other conversion errors - save original file
+                # WMF conversion failed - try to save as WMF original format
                 import warnings
-                warnings.warn(f"Failed to convert {original_ext} to PNG: {e}", RuntimeWarning)
-                with open(disk_path, 'wb') as f:
+                warnings.warn(f"Failed to convert {original_ext} to PNG: {e}. Saving as {original_ext}", RuntimeWarning)
+                
+                # Fallback: save as original WMF/EMF format
+                disk_path_fallback = str(Path(image_dir) / f"slide{slide_num}_image{image_count}{original_ext}")
+                with open(disk_path_fallback, 'wb') as f:
                     f.write(blob)
+                image_path = Path(disk_path_fallback).relative_to(Path(image_dir).parent).as_posix()
         else:
             # Standard save for non-EMF formats
             with open(disk_path, 'wb') as f:
