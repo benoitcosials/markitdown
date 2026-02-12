@@ -453,22 +453,123 @@ OU
 
 ---
 
+## ⚠️ Intégration MCP - CRITIQUE POUR EFFICACITÉ
+
+**Important :** Les descriptions LLM ne servent que si le MCP peut lire les images du bon endroit et les envoyer au bon LLM.
+
+### Le Problème de Base
+
+**Hérité de BRIEF_01 :** Les images doivent être créées relatives au répertoire du fichier PPTX, pas au répertoire temp VS Code.
+
+**Problème supplémentaire pour BRIEF_02 :**
+- Le LLM choisi doit être accessible via le MCP
+- Les images doivent être encodées en base64 ou uploadées
+- Les clés API doivent être disponibles dans l'environnement MCP
+
+### Solution - Étendre le MCP
+
+**Ajouter les paramètres BRIEF_02 au MCP :**
+
+```python
+@mcp.tool()
+async def convert_to_markdown(
+    uri: str,
+    output_images: bool = True,
+    image_dir: str = "images",
+    skip_background_images: bool = True,
+    skip_icon_images: bool = True,
+    deduplicate_images: bool = False,
+    # BRIEF_02 new params:
+    add_image_descriptions: bool = True,
+    image_description_model: str = "gpt-4-vision",
+    image_description_detail: str = "high",
+) -> str:
+    """Convert resource with LLM image descriptions.
+    
+    Args:
+        add_image_descriptions: Generate text descriptions (default: True)
+        image_description_model: LLM model for descriptions
+        image_description_detail: Detail level for LLM analysis
+    """
+    kwargs = {
+        "output_images": output_images,
+        "image_dir": image_dir,
+        "skip_background_images": skip_background_images,
+        "skip_icon_images": skip_icon_images,
+        "deduplicate_images": deduplicate_images,
+        "add_image_descriptions": add_image_descriptions,
+        "image_description_model": image_description_model,
+        "image_description_detail": image_description_detail,
+    }
+    return MarkItDown().convert_uri(uri, **kwargs).markdown
+```
+
+### Validation MCP Integration
+
+**Tester que :**
+1. ✅ Images extraites au bon endroit (BRIEF_01)
+2. ✅ Images traitées par le LLM sans erreurs
+3. ✅ Descriptions envoyées via l'API du modèle configuré
+4. ✅ Blocs ```image-description présents dans le Markdown
+5. ✅ Performance acceptable (ne pas surcharger LLM)
+
+**Sans cette correction, agents devront configurer LLM manuellement !**
+
+---
+
 ## ⚠️ Mise à Jour MCP Obligatoire
 
 **CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
 
 **Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
 
-**Paramètres à ajouter pour BRIEF_02 :**
-- `generate_image_descriptions: bool = False` - Activer descriptions textuelles
-- `image_description_prompt: str = None` - Prompt personnalisé (optionnel)
+**Actions requises :**
 
-**Action requise :**
-1. Ajouter les paramètres à `convert_to_markdown()`
-2. Documenter dans la docstring
-3. Tester : `pip install -e packages/markitdown-mcp`
+### 1. Exposer les Paramètres BRIEF_02
 
-**Référence :** Voir commit e3dcb49 (BRIEF_01) pour exemple d'implémentation MCP.
+```python
+@mcp.tool()
+async def convert_to_markdown(
+    uri: str,
+    output_images: bool = True,
+    image_dir: str = "images",
+    skip_background_images: bool = True,
+    skip_icon_images: bool = True,
+    deduplicate_images: bool = False,
+    add_image_descriptions: bool = True,           # ← NEW
+    image_description_model: str = "gpt-4-vision", # ← NEW
+    image_description_detail: str = "high",        # ← NEW
+) -> str:
+    """Convert resource to markdown with LLM image descriptions."""
+    kwargs = {
+        "output_images": output_images,
+        "image_dir": image_dir,
+        "skip_background_images": skip_background_images,
+        "skip_icon_images": skip_icon_images,
+        "deduplicate_images": deduplicate_images,
+        "add_image_descriptions": add_image_descriptions,
+        "image_description_model": image_description_model,
+        "image_description_detail": image_description_detail,
+    }
+    return MarkItDown().convert_uri(uri, **kwargs).markdown
+```
+
+### 2. Test et Validation
+
+```bash
+# Reinstall MCP
+pip install -e packages/markitdown-mcp
+
+# Test with descriptions
+@markitdown-ia Convert file:///C:/Repos/test/document.pptx add_image_descriptions=true
+
+# Verify:
+# - Images in correct directory
+# - image-description blocks present
+# - LLM calls successful
+```
+
+**Sans cette intégration MCP, les descriptions ne seront PAS accessibles !**
 
 ---
 

@@ -516,23 +516,137 @@ if self._is_picture(shape) and shape.has_chart:
 
 ---
 
+## ⚠️ Intégration MCP - CRITIQUE POUR EFFICACITÉ
+
+**Important :** L'ASCII art ne sert que si le MCP peut charger les images du bon endroit et les analyser correctement.
+
+### Le Problème de Base
+
+**Hérité de BRIEF_01 :** Les images doivent être créées relatives au répertoire du fichier PPTX, pas au répertoire temp VS Code.
+
+**Problème supplémentaire pour BRIEF_03 :**
+- Les charts doivent être analysés uniquement si `render_charts_as_ascii=True`
+- Les dimensions ASCII doivent être configurables
+- Les types de charts doivent être détectés correctement
+
+### Solution - Étendre le MCP
+
+**Ajouter les paramètres BRIEF_03 au MCP :**
+
+```python
+@mcp.tool()
+async def convert_to_markdown(
+    uri: str,
+    output_images: bool = True,
+    image_dir: str = "images",
+    skip_background_images: bool = True,
+    skip_icon_images: bool = True,
+    deduplicate_images: bool = False,
+    add_image_descriptions: bool = True,
+    image_description_model: str = "gpt-4-vision",
+    image_description_detail: str = "high",
+    # BRIEF_03 new params:
+    render_charts_as_ascii: bool = False,
+    ascii_chart_width: int = 60,
+    ascii_chart_height: int = 20,
+) -> str:
+    """Convert resource with ASCII art rendering for charts.
+    
+    Args:
+        render_charts_as_ascii: Generate ASCII art for charts (default: False)
+        ascii_chart_width: Chart ASCII width in characters (default: 60)
+        ascii_chart_height: Chart ASCII height in lines (default: 20)
+    """
+    kwargs = {
+        "output_images": output_images,
+        "image_dir": image_dir,
+        "skip_background_images": skip_background_images,
+        "skip_icon_images": skip_icon_images,
+        "deduplicate_images": deduplicate_images,
+        "add_image_descriptions": add_image_descriptions,
+        "image_description_model": image_description_model,
+        "image_description_detail": image_description_detail,
+        "render_charts_as_ascii": render_charts_as_ascii,
+        "ascii_chart_width": ascii_chart_width,
+        "ascii_chart_height": ascii_chart_height,
+    }
+    return MarkItDown().convert_uri(uri, **kwargs).markdown
+```
+
+### Validation MCP Integration
+
+**Tester que :**
+1. ✅ Images extraites au bon endroit (BRIEF_01)
+2. ✅ Charts détectés correctement (type, données)
+3. ✅ ASCII art généré avec dimensions appropriées
+4. ✅ Blocs ```ascii-chart présents dans le Markdown
+5. ✅ Caractères █ et ░ utilisés correctement
+6. ✅ Performance acceptable même avec charts complexes
+
+**Sans cette correction, agents devront configurer paramètres manuellement !**
+
+---
+
 ## ⚠️ Mise à Jour MCP Obligatoire
 
 **CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
 
 **Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
 
-**Paramètres à ajouter pour BRIEF_03 :**
-- `render_charts_as_ascii: bool = False` - Activer rendu ASCII des charts
-- `ascii_chart_width: int = 60` - Largeur des charts ASCII (caractères)
-- `ascii_chart_height: int = 20` - Hauteur des charts ASCII (lignes)
+**Actions requises :**
 
-**Action requise :**
-1. Ajouter les paramètres à `convert_to_markdown()`
-2. Documenter dans la docstring
-3. Tester : `pip install -e packages/markitdown-mcp`
+### 1. Exposer les Paramètres BRIEF_03
 
-**Référence :** Voir commit e3dcb49 (BRIEF_01) pour exemple d'implémentation MCP.
+```python
+@mcp.tool()
+async def convert_to_markdown(
+    uri: str,
+    output_images: bool = True,
+    image_dir: str = "images",
+    skip_background_images: bool = True,
+    skip_icon_images: bool = True,
+    deduplicate_images: bool = False,
+    add_image_descriptions: bool = True,
+    image_description_model: str = "gpt-4-vision",
+    image_description_detail: str = "high",
+    render_charts_as_ascii: bool = False,        # ← NEW
+    ascii_chart_width: int = 60,                 # ← NEW
+    ascii_chart_height: int = 20,                # ← NEW
+) -> str:
+    """Convert resource to markdown with ASCII chart rendering."""
+    kwargs = {
+        "output_images": output_images,
+        "image_dir": image_dir,
+        "skip_background_images": skip_background_images,
+        "skip_icon_images": skip_icon_images,
+        "deduplicate_images": deduplicate_images,
+        "add_image_descriptions": add_image_descriptions,
+        "image_description_model": image_description_model,
+        "image_description_detail": image_description_detail,
+        "render_charts_as_ascii": render_charts_as_ascii,
+        "ascii_chart_width": ascii_chart_width,
+        "ascii_chart_height": ascii_chart_height,
+    }
+    return MarkItDown().convert_uri(uri, **kwargs).markdown
+```
+
+### 2. Test et Validation
+
+```bash
+# Reinstall MCP
+pip install -e packages/markitdown-mcp
+
+# Test with ASCII charts
+@markitdown-ia Convert file:///C:/Repos/test/charts.pptx render_charts_as_ascii=true
+
+# Verify:
+# - Images in correct directory
+# - ascii-chart blocks present for charts
+# - Dimensions match requested values
+# - █ and ░ characters used correctly
+```
+
+**Sans cette intégration MCP, l'ASCII art ne sera PAS accessible !**
 
 ---
 

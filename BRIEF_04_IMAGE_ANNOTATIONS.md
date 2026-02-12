@@ -495,24 +495,155 @@ BRIEF_03 (Chart ASCII Art) → Indépendant
 
 ---
 
+## ⚠️ Intégration MCP - CRITIQUE POUR EFFICACITÉ
+
+**Important :** La conversion de shapes ne sert que si le MCP crée les images au bon endroit et expose tous les paramètres.
+
+### Le Problème de Base
+
+**Hérité de BRIEF_01 :** Les images doivent être créées relatives au répertoire du fichier PPTX, pas au répertoire temp VS Code.
+
+**Problème supplémentaire pour BRIEF_04 :**
+- Chaque shape converti devient un PNG distinct
+- Les images composites combinent multiple shapes
+- Les paramètres de contrôle doivent être configurables
+- La qualité de rendu (DPI) affecte les fichiers générés
+
+### Solution - Étendre le MCP
+
+**Ajouter les paramètres BRIEF_04 au MCP :**
+
+```python
+@mcp.tool()
+async def convert_to_markdown(
+    uri: str,
+    output_images: bool = True,
+    image_dir: str = "images",
+    skip_background_images: bool = True,
+    skip_icon_images: bool = True,
+    deduplicate_images: bool = False,
+    add_image_descriptions: bool = True,
+    image_description_model: str = "gpt-4-vision",
+    image_description_detail: str = "high",
+    render_charts_as_ascii: bool = False,
+    ascii_chart_width: int = 60,
+    ascii_chart_height: int = 20,
+    # BRIEF_04 new params:
+    convert_shapes_to_images: bool = False,
+    composite_images: bool = False,
+    keep_standalone_shapes: bool = True,
+    shape_rendering_dpi: int = 96,
+) -> str:
+    """Convert resource with shape conversion and composite images.
+    
+    Args:
+        convert_shapes_to_images: Convert standalone shapes to PNG (default: False)
+        composite_images: Create composite images (default: False)
+        keep_standalone_shapes: Keep individual shape images (default: True)
+        shape_rendering_dpi: DPI for shape rasterization (default: 96)
+    """
+    kwargs = {
+        "output_images": output_images,
+        "image_dir": image_dir,
+        "skip_background_images": skip_background_images,
+        "skip_icon_images": skip_icon_images,
+        "deduplicate_images": deduplicate_images,
+        "add_image_descriptions": add_image_descriptions,
+        "image_description_model": image_description_model,
+        "image_description_detail": image_description_detail,
+        "render_charts_as_ascii": render_charts_as_ascii,
+        "ascii_chart_width": ascii_chart_width,
+        "ascii_chart_height": ascii_chart_height,
+        "convert_shapes_to_images": convert_shapes_to_images,
+        "composite_images": composite_images,
+        "keep_standalone_shapes": keep_standalone_shapes,
+        "shape_rendering_dpi": shape_rendering_dpi,
+    }
+    return MarkItDown().convert_uri(uri, **kwargs).markdown
+```
+
+### Validation MCP Integration
+
+**Tester que :**
+1. ✅ Images extraites au bon endroit (BRIEF_01)
+2. ✅ Shapes convertis en PNG avec qualité appropriée
+3. ✅ Images composites créées correctement (Phase 2)
+4. ✅ Paramètres DPI affectent la taille/qualité
+5. ✅ Standalone shapes téléchargés ou composites selon config
+6. ✅ Performance acceptable avec nombreux shapes
+
+**Sans cette correction, agents ne pourront pas assembler composites !**
+
+---
+
 ## ⚠️ Mise à Jour MCP Obligatoire
 
 **CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
 
 **Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
 
-**Paramètres à ajouter pour BRIEF_04 :**
-- `convert_shapes: bool = True` - Activer conversion des shapes
-- `composite_images: bool = True` - Activer images composites (Phase 2)
-- `keep_standalone_shapes: bool = True` - Sauvegarder shapes standalone (Phase 1)
-- `shape_rendering_dpi: int = 96` - DPI pour conversion EMU → pixels
+**Actions requises :**
 
-**Action requise :**
-1. Ajouter les paramètres à `convert_to_markdown()`
-2. Documenter dans la docstring
-3. Tester : `pip install -e packages/markitdown-mcp`
+### 1. Exposer les Paramètres BRIEF_04
 
-**Référence :** Voir commit e3dcb49 (BRIEF_01) pour exemple d'implémentation MCP.
+```python
+@mcp.tool()
+async def convert_to_markdown(
+    uri: str,
+    output_images: bool = True,
+    image_dir: str = "images",
+    skip_background_images: bool = True,
+    skip_icon_images: bool = True,
+    deduplicate_images: bool = False,
+    add_image_descriptions: bool = True,
+    image_description_model: str = "gpt-4-vision",
+    image_description_detail: str = "high",
+    render_charts_as_ascii: bool = False,
+    ascii_chart_width: int = 60,
+    ascii_chart_height: int = 20,
+    convert_shapes_to_images: bool = False,      # ← NEW
+    composite_images: bool = False,              # ← NEW
+    keep_standalone_shapes: bool = True,         # ← NEW
+    shape_rendering_dpi: int = 96,               # ← NEW
+) -> str:
+    """Convert resource with shape conversion and composite images."""
+    kwargs = {
+        "output_images": output_images,
+        "image_dir": image_dir,
+        "skip_background_images": skip_background_images,
+        "skip_icon_images": skip_icon_images,
+        "deduplicate_images": deduplicate_images,
+        "add_image_descriptions": add_image_descriptions,
+        "image_description_model": image_description_model,
+        "image_description_detail": image_description_detail,
+        "render_charts_as_ascii": render_charts_as_ascii,
+        "ascii_chart_width": ascii_chart_width,
+        "ascii_chart_height": ascii_chart_height,
+        "convert_shapes_to_images": convert_shapes_to_images,
+        "composite_images": composite_images,
+        "keep_standalone_shapes": keep_standalone_shapes,
+        "shape_rendering_dpi": shape_rendering_dpi,
+    }
+    return MarkItDown().convert_uri(uri, **kwargs).markdown
+```
+
+### 2. Test et Validation
+
+```bash
+# Reinstall MCP
+pip install -e packages/markitdown-mcp
+
+# Test with shape conversion
+@markitdown-ia Convert file:///C:/Repos/test/shapes.pptx convert_shapes_to_images=true
+
+# Verify:
+# - Images in correct directory
+# - All shapes converted to PNG
+# - File sizes appropriate for DPI settings
+# - Composite images created when requested
+```
+
+**Sans cette intégration MCP, shape conversion ne sera PAS accessible !**
 
 ---
 

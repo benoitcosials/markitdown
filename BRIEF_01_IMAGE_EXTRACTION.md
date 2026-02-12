@@ -527,19 +527,27 @@ if self._is_picture(shape):
 
 ---
 
-## ⚠️ Mise à Jour MCP Obligatoire
+## ⚠️ Intégration MCP - CRITIQUE POUR EFFICACITÉ
 
-**CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
+**Important :** L'extraction d'images n'est utile que si le MCP peut créer les fichiers au bon endroit dans le repo de l'utilisateur.
 
-**Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
+### Le Problème
 
-**Action requise :**
-1. Ajouter les nouveaux paramètres à la fonction `convert_to_markdown()`
-2. Passer les paramètres via `**kwargs` à `convert_uri()`
-3. Documenter les paramètres dans la docstring du tool
-4. Tester la réinstallation : `pip install -e packages/markitdown-mcp`
+Actuellement, quand un agent utilise le MCP :
+```
+@markitdown-ia Convert file:///C:/Users/.../presentation.pptx
+```
 
-**Exemple (BRIEF_01) :**
+Le MCP exécute avec le **répertoire courant = dossier temp VS Code Copilot**, pas le répertoire du fichier PPTX.
+
+**Résultat :**
+- ❌ Images créées dans `C:\Users\ledoee\AppData\Roaming\Code\User\workspaceStorage\...`
+- ❌ Pas dans le repo où le fichier PPTX se trouve
+- ❌ Agent doit créer des scripts manuels pour extraire les images (friction !)
+
+### La Solution - Modifier le MCP
+
+**Nouveau comportement requis :**
 ```python
 @mcp.tool()
 async def convert_to_markdown(
@@ -550,16 +558,121 @@ async def convert_to_markdown(
     skip_icon_images: bool = True,
     deduplicate_images: bool = False,
 ) -> str:
-    """Documentation..."""
+    """Convert resource to markdown with images in correct location.
+    
+    CRITICAL: When uri is file:// path, images must be created relative to 
+    that file's directory, not the current working directory.
+    
+    Args:
+        uri: Resource URI (file://, http://, https://, data:)
+        output_images: Extract images
+        image_dir: Relative to FILE's directory (not CWD!)
+        ...other params...
+    """
+    
+    # Extract file directory from URI if applicable
+    base_dir = None
+    if uri.startswith("file://"):
+        from pathlib import Path
+        file_path = Path(uri.replace("file:///", "").replace("%20", " "))
+        base_dir = str(file_path.parent)  # ← KEY: Use file's directory
+    
+    # Adjust image_dir to be relative to base_dir
+    if base_dir and output_images:
+        image_dir = os.path.join(base_dir, image_dir)
+    
     kwargs = {
         "output_images": output_images,
-        "image_dir": image_dir,
-        # etc.
+        "image_dir": image_dir,  # ← Now absolute, pointing to correct location
+        "skip_background_images": skip_background_images,
+        "skip_icon_images": skip_icon_images,
+        "deduplicate_images": deduplicate_images,
     }
     return MarkItDown().convert_uri(uri, **kwargs).markdown
 ```
 
-**Sans cette mise à jour, les fonctionnalités ne seront PAS accessibles aux utilisateurs MCP !**
+### Validation MCP Integration
+
+**Tester que :**
+1. ✅ URI `file:///C:/Repos/Bancaire_Documentation/.../file.pptx`
+2. ✅ MCP crée images dans `C:/Repos/Bancaire_Documentation/.../images/`
+3. ✅ **PAS** dans le répertoire temp VS Code
+4. ✅ Markdown contient `![](images/slide1_image0.png)`
+5. ✅ Fichier existe à ce chemin dans le repo
+
+**Sans cette correction, agents devront créer des scripts de support !**
+
+---
+
+## ⚠️ Mise à Jour MCP Obligatoire
+
+**CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
+
+**Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
+
+**Actions requises :**
+
+### 1. Exposer les Paramètres
+
+```python
+@mcp.tool()
+async def convert_to_markdown(
+    uri: str,
+    output_images: bool = True,
+    image_dir: str = "images",
+    skip_background_images: bool = True,
+    skip_icon_images: bool = True,
+    deduplicate_images: bool = False,
+) -> str:
+    """Convert resource to markdown with image extraction.
+    
+    Args:
+        uri: Resource URI (file://, http://, https://, data:)
+        output_images: Extract and save images (default: True)
+        image_dir: Directory for images relative to source file (default: "images")
+        skip_background_images: Skip PPTX backgrounds (default: True)
+        skip_icon_images: Extract photos only, skip icons (default: True)
+        deduplicate_images: Deduplicate identical images (default: False)
+    """
+    kwargs = {
+        "output_images": output_images,
+        "image_dir": image_dir,
+        "skip_background_images": skip_background_images,
+        "skip_icon_images": skip_icon_images,
+        "deduplicate_images": deduplicate_images,
+    }
+    return MarkItDown().convert_uri(uri, **kwargs).markdown
+```
+
+### 2. Implémenter Base Directory Detection
+
+```python
+# In convert_to_markdown function body:
+base_dir = None
+if uri.startswith("file://"):
+    from pathlib import Path
+    file_path = Path(uri.replace("file:///", "").replace("%20", " "))
+    base_dir = str(file_path.parent)
+
+# Adjust image_dir to absolute path when needed
+if base_dir and output_images:
+    image_dir = os.path.join(base_dir, image_dir)
+    kwargs["image_dir"] = image_dir
+```
+
+### 3. Test et Validation
+
+```bash
+# Reinstall MCP
+pip install -e packages/markitdown-mcp
+
+# Test with file:// URI
+@markitdown-ia Convert file:///C:/Repos/test/document.pptx
+
+# Verify images are in C:/Repos/test/images/ NOT in temp folder
+```
+
+**Sans cette intégration MCP, l'efficacité est compromise !**
 
 ---
 
