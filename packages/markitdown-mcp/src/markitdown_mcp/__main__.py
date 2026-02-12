@@ -33,6 +33,7 @@ async def convert_to_markdown(
         uri: Resource URI to convert (http:, https:, file:, or data:)
         output_images: Extract and save images to disk (default: True)
         image_dir: Directory for saved images relative to output (default: "images")
+                   For file:// URIs, this is resolved relative to the source file directory.
         skip_background_images: Skip PowerPoint background placeholder images (default: True)
         skip_icon_images: Skip icon images, extract only photos (default: True)
         deduplicate_images: Deduplicate identical images using MD5 hash (default: False)
@@ -40,15 +41,35 @@ async def convert_to_markdown(
     Returns:
         Markdown conversion of the resource
     """
+    # CRITICAL FIX: Resolve image_dir relative to source file for file:// URIs
+    adjusted_image_dir = image_dir
+    
+    if uri.startswith("file://") and output_images:
+        try:
+            # Parse file:// URI to extract OS path
+            file_path_str = urllib.parse.unquote(uri.replace("file:///", ""))
+            source_file = Path(file_path_str)
+            
+            # Get parent directory of source file
+            base_dir = str(source_file.parent)
+            
+            # Resolve image_dir relative to source file's directory
+            adjusted_image_dir = os.path.join(base_dir, image_dir)
+        except (ValueError, OSError) as e:
+            # If URI parsing fails, fall back to default image_dir
+            print(f"Warning: Failed to parse file URI for directory context: {e}")
+            adjusted_image_dir = image_dir
+    
     kwargs = {
         "output_images": output_images,
-        "image_dir": image_dir,
+        "image_dir": adjusted_image_dir,
         "skip_background_images": skip_background_images,
         "skip_icon_images": skip_icon_images,
         "deduplicate_images": deduplicate_images,
     }
     
     return MarkItDown(enable_plugins=check_plugins_enabled()).convert_uri(uri, **kwargs).markdown
+
 
 
 def check_plugins_enabled() -> bool:
