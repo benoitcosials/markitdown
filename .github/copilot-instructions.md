@@ -9,6 +9,12 @@ Vous travaillez sur **markitdown**, un projet Microsoft Python pour convertir di
 **Python** : 3.10+
 **Framework** : Standard library + python-pptx, mammoth, etc.
 
+**⚠️ ENVIRONNEMENT DE DÉVELOPPEMENT CRITIQUE :**
+- **IDE cible** : Visual Studio Code (VS Code)
+- **Agent IA utilisé** : GitHub Copilot (dans VS Code)
+- **NE PAS développer dans** : Claude Desktop, Claude Web, ou autres environnements
+- **Workflow MCP** : Tests uniquement, développement dans VS Code
+
 ## 📋 Documents de Planification
 
 ### Briefs Techniques Disponibles
