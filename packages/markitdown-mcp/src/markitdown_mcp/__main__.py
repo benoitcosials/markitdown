@@ -18,9 +18,36 @@ mcp = FastMCP("markitdown")
 
 
 @mcp.tool()
-async def convert_to_markdown(uri: str) -> str:
-    """Convert a resource described by an http:, https:, file: or data: URI to markdown"""
-    return MarkItDown(enable_plugins=check_plugins_enabled()).convert_uri(uri).markdown
+async def convert_to_markdown(
+    uri: str,
+    output_images: bool = True,
+    image_dir: str = "images",
+    skip_background_images: bool = True,
+    skip_icon_images: bool = True,
+    deduplicate_images: bool = False,
+) -> str:
+    """Convert a resource described by an http:, https:, file: or data: URI to markdown.
+    
+    Args:
+        uri: Resource URI to convert (http:, https:, file:, or data:)
+        output_images: Extract and save images to disk (default: True)
+        image_dir: Directory for saved images relative to output (default: "images")
+        skip_background_images: Skip PowerPoint background placeholder images (default: True)
+        skip_icon_images: Skip icon images, extract only photos (default: True)
+        deduplicate_images: Deduplicate identical images using MD5 hash (default: False)
+    
+    Returns:
+        Markdown conversion of the resource
+    """
+    kwargs = {
+        "output_images": output_images,
+        "image_dir": image_dir,
+        "skip_background_images": skip_background_images,
+        "skip_icon_images": skip_icon_images,
+        "deduplicate_images": deduplicate_images,
+    }
+    
+    return MarkItDown(enable_plugins=check_plugins_enabled()).convert_uri(uri, **kwargs).markdown
 
 
 def check_plugins_enabled() -> bool:
