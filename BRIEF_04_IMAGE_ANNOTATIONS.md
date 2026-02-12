@@ -495,6 +495,27 @@ BRIEF_03 (Chart ASCII Art) → Indépendant
 
 ---
 
+## ⚠️ Mise à Jour MCP Obligatoire
+
+**CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
+
+**Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
+
+**Paramètres à ajouter pour BRIEF_04 :**
+- `convert_shapes: bool = True` - Activer conversion des shapes
+- `composite_images: bool = True` - Activer images composites (Phase 2)
+- `keep_standalone_shapes: bool = True` - Sauvegarder shapes standalone (Phase 1)
+- `shape_rendering_dpi: int = 96` - DPI pour conversion EMU → pixels
+
+**Action requise :**
+1. Ajouter les paramètres à `convert_to_markdown()`
+2. Documenter dans la docstring
+3. Tester : `pip install -e packages/markitdown-mcp`
+
+**Référence :** Voir commit e3dcb49 (BRIEF_01) pour exemple d'implémentation MCP.
+
+---
+
 ## 📚 Références
 
 - **Fichier :** [`_pptx_converter.py`](packages/markitdown/src/markitdown/converters/_pptx_converter.py)

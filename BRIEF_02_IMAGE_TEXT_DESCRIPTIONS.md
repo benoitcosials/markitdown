@@ -453,6 +453,25 @@ OU
 
 ---
 
+## ⚠️ Mise à Jour MCP Obligatoire
+
+**CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
+
+**Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
+
+**Paramètres à ajouter pour BRIEF_02 :**
+- `generate_image_descriptions: bool = False` - Activer descriptions textuelles
+- `image_description_prompt: str = None` - Prompt personnalisé (optionnel)
+
+**Action requise :**
+1. Ajouter les paramètres à `convert_to_markdown()`
+2. Documenter dans la docstring
+3. Tester : `pip install -e packages/markitdown-mcp`
+
+**Référence :** Voir commit e3dcb49 (BRIEF_01) pour exemple d'implémentation MCP.
+
+---
+
 ## 📚 Références
 
 - **Fichier:** [`_pptx_converter.py`](packages/markitdown/src/markitdown/converters/_pptx_converter.py)

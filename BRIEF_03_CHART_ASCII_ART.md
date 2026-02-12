@@ -516,6 +516,26 @@ if self._is_picture(shape) and shape.has_chart:
 
 ---
 
+## ⚠️ Mise à Jour MCP Obligatoire
+
+**CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
+
+**Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
+
+**Paramètres à ajouter pour BRIEF_03 :**
+- `render_charts_as_ascii: bool = False` - Activer rendu ASCII des charts
+- `ascii_chart_width: int = 60` - Largeur des charts ASCII (caractères)
+- `ascii_chart_height: int = 20` - Hauteur des charts ASCII (lignes)
+
+**Action requise :**
+1. Ajouter les paramètres à `convert_to_markdown()`
+2. Documenter dans la docstring
+3. Tester : `pip install -e packages/markitdown-mcp`
+
+**Référence :** Voir commit e3dcb49 (BRIEF_01) pour exemple d'implémentation MCP.
+
+---
+
 ## 📚 Références
 
 - **Fichier:** [`_pptx_converter.py`](packages/markitdown/src/markitdown/converters/_pptx_converter.py)

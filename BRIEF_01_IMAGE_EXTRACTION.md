@@ -523,6 +523,43 @@ if self._is_picture(shape):
 - [ ] Descriptions LLM continuent de fonctionner
 - [ ] Tests 1-7 passent tous
 - [ ] Aucune nouvelle dépendance externe
+- [ ] **⚠️ MCP mis à jour** (nouveaux paramètres exposés)
+
+---
+
+## ⚠️ Mise à Jour MCP Obligatoire
+
+**CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
+
+**Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
+
+**Action requise :**
+1. Ajouter les nouveaux paramètres à la fonction `convert_to_markdown()`
+2. Passer les paramètres via `**kwargs` à `convert_uri()`
+3. Documenter les paramètres dans la docstring du tool
+4. Tester la réinstallation : `pip install -e packages/markitdown-mcp`
+
+**Exemple (BRIEF_01) :**
+```python
+@mcp.tool()
+async def convert_to_markdown(
+    uri: str,
+    output_images: bool = True,
+    image_dir: str = "images",
+    skip_background_images: bool = True,
+    skip_icon_images: bool = True,
+    deduplicate_images: bool = False,
+) -> str:
+    """Documentation..."""
+    kwargs = {
+        "output_images": output_images,
+        "image_dir": image_dir,
+        # etc.
+    }
+    return MarkItDown().convert_uri(uri, **kwargs).markdown
+```
+
+**Sans cette mise à jour, les fonctionnalités ne seront PAS accessibles aux utilisateurs MCP !**
 
 ---
 
