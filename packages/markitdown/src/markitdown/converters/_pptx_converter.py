@@ -119,8 +119,16 @@ class PptxConverter(DocumentConverter):
         
         # --- MODULE: Image Management - Configuration (BRIEF_01) ---
         image_dir_raw = kwargs.get("image_dir", "images")
-        # Apply wiki-folder convention (slugify) for clean folder names
-        image_dir = self._slugify(image_dir_raw)
+        
+        # Apply wiki-folder slugify ONLY if using default "images" folder
+        # If user provides custom path, respect it as-is (may contain subfolders)
+        if image_dir_raw == "images":
+            # Default: slugify based on presentation filename if available
+            image_dir = self._slugify(image_dir_raw)
+        else:
+            # Custom path: use as-is, normalize path separators
+            image_dir = image_dir_raw.replace('\\', '/')
+        
         output_images = kwargs.get("output_images", True)
         deduplicate_images = kwargs.get("deduplicate_images", False)
         skip_background_images = kwargs.get("skip_background_images", True)
