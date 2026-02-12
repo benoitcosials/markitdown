@@ -506,8 +506,13 @@ async def convert_to_markdown(
 
 ### Validation MCP Integration
 
+**✅ Foundation de BRIEF_01 maintenant stable** - Commit 6c7ee07
+- Images créées au BON endroit automatiquement
+- Répertoire source détecté depuis file:// URI
+- Agent workflow seamless sans scripts manuels
+
 **Tester que :**
-1. ✅ Images extraites au bon endroit (BRIEF_01)
+1. ✅ Images extraites au bon endroit (BRIEF_01 - RÉSOLU)
 2. ✅ Images traitées par le LLM sans erreurs
 3. ✅ Descriptions envoyées via l'API du modèle configuré
 4. ✅ Blocs ```image-description présents dans le Markdown

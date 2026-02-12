@@ -564,8 +564,13 @@ async def convert_to_markdown(
 
 ### Validation MCP Integration
 
+**✅ Foundation de BRIEF_01 maintenant stable** - Commit 6c7ee07
+- Images créées au BON endroit automatiquement
+- Répertoire source détecté depuis file:// URI
+- Agent workflow seamless sans scripts manuels
+
 **Tester que :**
-1. ✅ Images extraites au bon endroit (BRIEF_01)
+1. ✅ Images extraites au bon endroit (BRIEF_01 - RÉSOLU)
 2. ✅ Shapes convertis en PNG avec qualité appropriée
 3. ✅ Images composites créées correctement (Phase 2)
 4. ✅ Paramètres DPI affectent la taille/qualité

@@ -606,13 +606,13 @@ async def convert_to_markdown(
 
 ## ⚠️ Mise à Jour MCP Obligatoire
 
-**CRITIQUE** : Après implémentation, les nouveaux paramètres **DOIVENT** être exposés dans le MCP.
+**✅ IMPLÉMENTÉE** - Commit [6c7ee07](https://github.com/benoitcosials/markitdown/commit/6c7ee07)
 
-**Fichier à modifier :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
+**CRITIQUE** : Les paramètres **SONT MAINTENANT** exposés dans le MCP avec détection automatique du répertoire.
 
-**Actions requises :**
+**Fichier modifié :** `packages/markitdown-mcp/src/markitdown_mcp/__main__.py`
 
-### 1. Exposer les Paramètres
+### 1. ✅ Paramètres Exposés
 
 ```python
 @mcp.tool()
@@ -634,45 +634,52 @@ async def convert_to_markdown(
         skip_icon_images: Extract photos only, skip icons (default: True)
         deduplicate_images: Deduplicate identical images (default: False)
     """
-    kwargs = {
-        "output_images": output_images,
-        "image_dir": image_dir,
-        "skip_background_images": skip_background_images,
-        "skip_icon_images": skip_icon_images,
-        "deduplicate_images": deduplicate_images,
-    }
-    return MarkItDown().convert_uri(uri, **kwargs).markdown
 ```
 
-### 2. Implémenter Base Directory Detection
+### 2. ✅ Base Directory Detection Implémentée
+
+La logique CRITIQUE est maintenant en place :
 
 ```python
-# In convert_to_markdown function body:
-base_dir = None
-if uri.startswith("file://"):
-    from pathlib import Path
-    file_path = Path(uri.replace("file:///", "").replace("%20", " "))
-    base_dir = str(file_path.parent)
+# CRITICAL FIX: Resolve image_dir relative to source file for file:// URIs
+adjusted_image_dir = image_dir
 
-# Adjust image_dir to absolute path when needed
-if base_dir and output_images:
-    image_dir = os.path.join(base_dir, image_dir)
-    kwargs["image_dir"] = image_dir
+if uri.startswith("file://") and output_images:
+    try:
+        # Parse file:// URI to extract OS path
+        file_path_str = urllib.parse.unquote(uri.replace("file:///", ""))
+        source_file = Path(file_path_str)
+        
+        # Get parent directory of source file
+        base_dir = str(source_file.parent)
+        
+        # Resolve image_dir relative to source file's directory
+        adjusted_image_dir = os.path.join(base_dir, image_dir)
+    except (ValueError, OSError) as e:
+        # If URI parsing fails, fall back to default image_dir
+        print(f"Warning: Failed to parse file URI for directory context: {e}")
+        adjusted_image_dir = image_dir
 ```
 
-### 3. Test et Validation
+### 3. ✅ Test et Validation
 
 ```bash
-# Reinstall MCP
+# MCP est déjà installé et mise à jour
 pip install -e packages/markitdown-mcp
 
-# Test with file:// URI
+# Test avec file:// URI
 @markitdown-ia Convert file:///C:/Repos/test/document.pptx
 
-# Verify images are in C:/Repos/test/images/ NOT in temp folder
+# Vérifier: images créées dans C:/Repos/test/images/ (CORRECT -ENFIN!)
 ```
 
-**Sans cette intégration MCP, l'efficacité est compromise !**
+**✅ L'INTÉGRATION MCP EST MAINTENANT COMPLÈTE !**
+
+**Impact**: 
+- Images créées relative au fichier PPTX ✅
+- Agent workflow seamless sans scripts manuels ✅
+- Tous les BRIEFs peuvent utiliser le MCP ✅
+
 
 ---
 
