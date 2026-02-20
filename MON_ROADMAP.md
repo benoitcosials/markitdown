@@ -137,13 +137,12 @@ md_content += f"\n![{alt_text}](data:{content_type};base64,{b64_string})\n"
   - ✅ Sauvegarde images sur disque (`images/` par défaut)
   - ✅ Nommage cohérent : `slide{N}_image{M}.{ext}`
   - ✅ Dossier personnalisable (`image_dir`)
-  - ✅ Déduplication optionnelle (hash MD5)
+  - ✅ Déduplication automatique (hash MD5 obligatoire)
   - ✅ Préservation mode Base64 existant
   - ✅ Compatibilité descriptions LLM existantes
 - **Paramètres**:
   - `output_images=True` (défaut)
   - `image_dir="images"` (défaut)
-  - `deduplicate_images=False` (optionnel)
 - **Voir:** [BRIEF_01_IMAGE_EXTRACTION.md](BRIEF_01_IMAGE_EXTRACTION.md) pour spécifications complètes
 
 #### 1. Support des Listes à Puces Structurées

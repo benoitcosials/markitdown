@@ -122,10 +122,10 @@ Markdown:
 
 **Important:** Ce mode est **déjà implémenté et fonctionnel**. Il **DOIT** rester intact et compatible avec les nouvelles fonctionnalités.
 
-### Use Case 5 : Déduplication
+### Use Case 5 : Déduplication (Automatique)
 ```
 Input:  presentation.pptx (logo répété sur 5 slides)
-Option: deduplicate_images=True
+Comportement: Déduplication automatique via hash MD5
 Output:
   - images/
     └── slide1_image0.png (sauvegardé une seule fois)
@@ -136,7 +136,7 @@ Markdown (tous les slides):
 ![Logo](images/slide1_image0.png)  ← même chemin
 ```
 
-**Mécanisme:** Hash MD5 du blob binaire pour identifier les doublons.
+**Mécanisme:** Hash MD5 du blob binaire pour identifier les doublons (toujours actif).
 
 ### Use Case 6 : Mode Legacy (Désactiver Extraction)
 ```
@@ -160,14 +160,15 @@ Markdown:
 
 | Paramètre | Type | Défaut | Description | Status |
 |-----------|------|--------|---|---|
-| `output_images` | bool | `True` | Activer sauvegarde des images | À implémenter |
-| `image_dir` | str | `"images"` | Dossier de destination relatif au Markdown | À implémenter |
+| `output_images` | bool | `True` | Activer sauvegarde des images | ✅ Implémenté |
+| `image_dir` | str | `"images"` | Dossier de destination relatif au Markdown | ✅ Implémenté |
 | `keep_data_uris` | bool | `False` | Encoder en base64 au lieu de fichiers | ✅ **Existant** |
-| `deduplicate_images` | bool | `False` | Dédupliquer les images identiques | À implémenter |
-| `image_naming_scheme` | str | `"slide"` | Format naming: `"slide"` (seul supporté) | À implémenter |
+| `image_naming_scheme` | str | `"slide"` | Format naming: `"slide"` (seul supporté) | ✅ Implémenté |
 | `llm_client` | object | `None` | Client LLM pour descriptions (OpenAI) | ✅ **Existant** |
 | `llm_model` | str | `None` | Modèle LLM (ex: gpt-4o, gpt-4-turbo) | ✅ **Existant** |
 | `llm_prompt` | str | (défaut) | Prompt custom pour descriptions LLM | ✅ **Existant** |
+
+**Note:** La déduplication via hash MD5 est désormais **toujours active** et n'est plus configurable.
 
 ### Nommage des Images
 

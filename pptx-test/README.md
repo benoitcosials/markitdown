@@ -62,7 +62,7 @@ python run_comprehensive_tests.py
 - **Répertoire résultats**: `pptx-result/test-<timestamp>/`
 - **Images extraites**: Oui (`output_images=True`)
 - **Skip backgrounds**: Oui (`skip_background_images=True`)
-- **Déduplication**: Non (`deduplicate_images=False`)
+- **Déduplication**: Automatique (hash MD5 obligatoire)
 - **Format chemins**: Unix/Markdown (`/` au lieu de `\`)
 
 ### Sortie attendue
@@ -100,7 +100,7 @@ Repertoire: ...
 4. **Chemins des images**
    - Markdown généré utilise `/` (Unix standard)
    - Fonctionne sur Windows, Linux, Mac
-   - Images physiquement sauvegardées dans `_images/`
+   - Images physiquement sauvegardées dans `images/`
 
 
 ## 📋 Historique des Tests

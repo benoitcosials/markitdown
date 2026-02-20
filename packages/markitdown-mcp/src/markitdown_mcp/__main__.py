@@ -27,7 +27,6 @@ async def convert_to_markdown(
     image_dir: str = "images",
     skip_background_images: bool = True,
     skip_icon_images: bool = True,
-    deduplicate_images: bool = False,
 ) -> str:
     """Convert a resource described by an http:, https:, file: or data: URI to markdown.
     
@@ -38,7 +37,6 @@ async def convert_to_markdown(
                    For file:// URIs, this is resolved relative to the source file directory.
         skip_background_images: Skip PowerPoint background placeholder images (default: True)
         skip_icon_images: Skip icon images, extract only photos (default: True)
-        deduplicate_images: Deduplicate identical images using MD5 hash (default: False)
     
     Returns:
         Markdown conversion of the resource
@@ -67,7 +65,6 @@ async def convert_to_markdown(
         "image_dir": adjusted_image_dir,
         "skip_background_images": skip_background_images,
         "skip_icon_images": skip_icon_images,
-        "deduplicate_images": deduplicate_images,
     }
     
     return MarkItDown(enable_plugins=check_plugins_enabled()).convert_uri(uri, **kwargs).markdown

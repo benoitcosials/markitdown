@@ -130,7 +130,6 @@ class PptxConverter(DocumentConverter):
             image_dir = image_dir_raw.replace('\\', '/')
         
         output_images = kwargs.get("output_images", True)
-        deduplicate_images = kwargs.get("deduplicate_images", False)
         skip_background_images = kwargs.get("skip_background_images", True)
         skip_icon_images = kwargs.get("skip_icon_images", True)  # NEW: Filter icons
         self._image_hashes = {}  # Reset for each conversion
@@ -225,8 +224,7 @@ class PptxConverter(DocumentConverter):
                             shape, 
                             slide_num, 
                             image_count, 
-                            image_dir, 
-                            deduplicate_images
+                            image_dir
                         )
                         
                         # URL-encode path for markdown (handles any remaining special chars)
@@ -430,18 +428,16 @@ class PptxConverter(DocumentConverter):
         shape,
         slide_num: int,
         image_count: int,
-        image_dir: str,
-        deduplicate_images: bool
+        image_dir: str
     ) -> tuple[str, bool]:
         """
-        Save PPTX image to local folder.
+        Save PPTX image to local folder (with mandatory deduplication).
         
         Args:
             shape: PPTX shape containing image
             slide_num: Slide number (1-indexed)
             image_count: Image counter within slide (0-indexed)
             image_dir: Destination folder (relative path)
-            deduplicate_images: Enable MD5 deduplication
         
         Returns:
             tuple: (image_path, was_deduplicated)
@@ -452,12 +448,11 @@ class PptxConverter(DocumentConverter):
         filename = shape.image.filename
         content_type = shape.image.content_type
         
-        # Deduplication using MD5 hash
-        if deduplicate_images:
-            image_hash = hashlib.md5(blob).hexdigest()
-            if image_hash in self._image_hashes:
-                # Image already saved, return existing path
-                return self._image_hashes[image_hash], True
+        # Deduplication using MD5 hash (mandatory)
+        image_hash = hashlib.md5(blob).hexdigest()
+        if image_hash in self._image_hashes:
+            # Image already saved, return existing path
+            return self._image_hashes[image_hash], True
         
         # Determine file extension
         ext = self._get_image_extension(filename, content_type)
@@ -533,9 +528,8 @@ class PptxConverter(DocumentConverter):
                 f.write(blob)
         # --- END MODULE ---
         
-        # Store hash for future deduplication
-        if deduplicate_images:
-            self._image_hashes[image_hash] = image_path
+        # Store hash for future deduplication (mandatory)
+        self._image_hashes[image_hash] = image_path
         
         return image_path, False
     # --- END MODULE ---

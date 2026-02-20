@@ -79,9 +79,7 @@ def process_single_pptx(pptx_file_path, output_parent_dir=None):
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Image directory is SIBLING to output.md (same level)
-    images_dir_name = f"{pptx_stem}_images"
-    # Slugify to match what the converter will create (wiki-folder convention)
-    images_dir_slug = slugify(images_dir_name)
+    images_dir_name = "images"
     
     try:
         # Convert - images extracted relative to current directory
@@ -93,10 +91,9 @@ def process_single_pptx(pptx_file_path, output_parent_dir=None):
             md = MarkItDown()
             result = md.convert(
                 source=pptx_path,
-                image_dir=images_dir_name,  # Pass original name, converter will slugify
+                image_dir=images_dir_name,
                 output_images=True,
-                skip_background_images=True,
-                deduplicate_images=False
+                skip_background_images=True
             )
             
         finally:
@@ -106,15 +103,15 @@ def process_single_pptx(pptx_file_path, output_parent_dir=None):
         output_md = output_dir / "output.md"
         output_md.write_text(result.markdown, encoding="utf-8")
         
-        # Count extracted images - use slugified name to find actual folder
-        images_dir = output_dir / images_dir_slug
+        # Count extracted images - check what physically exists
+        images_dir = output_dir / images_dir_name
         image_count = len(list(images_dir.glob("*"))) if images_dir.exists() else 0
         
         return {
             "file": pptx_path.name,
             "status": "SUCCESS",
             "images": image_count,
-            "images_dir_name": images_dir_slug,  # Report slugified name
+            "images_dir_name": images_dir_name,
             "error": None
         }
         
@@ -213,7 +210,17 @@ def run_comprehensive_tests():
                 f.write(f"### {result['file']}\n\n")
                 f.write("- **Status**: SUCCESS\n")
                 f.write(f"- **Images**: {result['images']}\n")
-                f.write(f"- **Dossier images relatif**: `{result['images_dir_name']}/`\n\n")
+                f.write(f"- **Dossier de sortie**: `{result['file'].replace('.pptx', '')}/`\n")
+                f.write(f"- **Markdown**: [output.md](./{result['file'].replace('.pptx', '')}/output.md)\n")
+                
+                # List images if any
+                if result['images'] > 0:
+                    f.write("- **Images List**:\n")
+                    images_dir = test_session_dir / result['file'].replace('.pptx', '') / result['images_dir_name']
+                    if images_dir.exists():
+                        for img_file in sorted(images_dir.glob("*")):
+                            f.write(f"  - `{img_file.name}`\n")
+                f.write("\n")
         
         # Failed conversions
         if failed:
