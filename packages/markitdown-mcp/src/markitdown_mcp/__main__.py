@@ -26,7 +26,7 @@ async def convert_to_markdown(
     output_images: bool = True,
     image_dir: str = "images",
     skip_background_images: bool = True,
-    skip_icon_images: bool = True,
+    skip_icon_images: bool = False,
 ) -> str:
     """Convert a resource described by an http:, https:, file: or data: URI to markdown.
     
@@ -36,7 +36,7 @@ async def convert_to_markdown(
         image_dir: Directory for saved images relative to output (default: "images")
                    For file:// URIs, this is resolved relative to the source file directory.
         skip_background_images: Skip PowerPoint background placeholder images (default: True)
-        skip_icon_images: Skip icon images, extract only photos (default: True)
+        skip_icon_images: Skip icon images, extract only photos (default: False)
     
     Returns:
         Markdown conversion of the resource

@@ -131,7 +131,7 @@ class PptxConverter(DocumentConverter):
         
         output_images = kwargs.get("output_images", True)
         skip_background_images = kwargs.get("skip_background_images", True)
-        skip_icon_images = kwargs.get("skip_icon_images", True)  # NEW: Filter icons
+        skip_icon_images = kwargs.get("skip_icon_images", False)  # Extract all images by default
         self._image_hashes = {}  # Reset for each conversion
         # --- END MODULE ---
         
@@ -150,14 +150,12 @@ class PptxConverter(DocumentConverter):
                 # Pictures
                 if self._is_picture(shape):
                     # --- MODULE: Skip Background Images (BRIEF_01) ---
-                    skip_bg = kwargs.get("skip_background_images", True)
-                    if skip_bg and self._is_background_image(shape):
+                    if skip_background_images and self._is_background_image(shape):
                         return  # Skip this background image
                     # --- END MODULE ---
                     
                     # --- MODULE: Skip Icon Images (Extract Photos Only) ---
-                    skip_icons = kwargs.get("skip_icon_images", True)
-                    if skip_icons:
+                    if skip_icon_images:
                         image_type = self._classify_image_type(shape)
                         if image_type == 'icon':
                             return  # Skip icon, only extract photos
