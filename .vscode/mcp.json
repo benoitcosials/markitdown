@@ -1,6 +1,6 @@
 {
   "servers": {
-    "markitdown-ia-release": {
+    "markitdown-ia-develop": {
       "type": "stdio",
       "command": "uvx",
       "args": [
