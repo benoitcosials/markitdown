@@ -15,21 +15,66 @@ Vous travaillez sur **markitdown**, un projet Microsoft Python pour convertir di
 - **NE PAS développer dans** : Claude Desktop, Claude Web, ou autres environnements
 - **Workflow MCP** : Tests uniquement, développement dans VS Code
 
+## 🎓 Instructions & Agents de Qualité
+
+### Instructions Python Disponibles
+
+Pour garantir un code Python de haute qualité, les instructions suivantes sont automatiquement chargées :
+
+1. **[python.instructions.md](.github/instructions/python.instructions.md)** ✅
+   - Conventions Python (PEP 8, type hints, docstrings)
+   - Gestion des erreurs et edge cases
+   - Tests et validation
+   - S'applique à : `**/*.py`
+
+2. **[self-explanatory-code.instructions.md](.github/instructions/self-explanatory-code.instructions.md)** ✅
+   - Principes de code auto-documenté
+   - Commenter le WHY pas le WHAT
+   - Annotations (TODO, FIXME, NOTE, SECURITY, etc.)
+   - S'applique à : tous les fichiers
+
+### Agents Experts Disponibles
+
+Agents spécialisés pour assistance durant le développement :
+
+1. **[python-expert.agent.md](.github/agents/python-expert.agent.md)** 🤖
+   - Expert Python 3.10+ avec focus sur qualité et architecture
+   - Type hints, async/await, best practices
+   - Spécialisé pour BRIEF_02 (LLM image descriptions adaptatives)
+   - Utilisation : `@workspace utilise #file:python-expert.agent.md pour [tâche]`
+
+2. **[markitdown-orchestrator.agent.md](.github/agents/markitdown-orchestrator.agent.md)** 🎯
+   - Orchestrateur master pour workflow complet
+   - Gère recherche, planification, implémentation, tests
+   - Utilisation : `@workspace utilise #file:markitdown-orchestrator.agent.md pour commencer BRIEF_XX`
+
+### 🚀 Commandes Recommandées pour BRIEF_02
+
+**Avec Python Expert** :
+```
+@workspace utilise #file:python-expert.agent.md pour implémenter BRIEF_02
+```
+
+**Avec Orchestrateur** (workflow complet automatique) :
+```
+@workspace utilise #file:markitdown-orchestrator.agent.md pour commencer BRIEF_02
+```
+
 ## 📋 Documents de Planification
 
 ### Briefs Techniques Disponibles
 
 Trois briefs techniques détaillés sont disponibles à la racine du projet :
 
-1. **[BRIEF_01_IMAGE_EXTRACTION.md](../BRIEF_01_IMAGE_EXTRACTION.md)** (5h) - Priorité CRITIQUE
+1. **[BRIEF_01_IMAGE_EXTRACTION.md](../BRIEF_01_IMAGE_EXTRACTION.md)** ✅ TERMINÉ (5h)
    - Fonctionnalité : Sauvegarde physique des images PPTX dans un dossier
    - Fichier cible : `packages/markitdown/src/markitdown/converters/_pptx_converter.py`
-   - Bug à corriger : Images génèrent des liens cassés (`![](image.jpg)` sans fichier)
+   - Résultat : Images extraites correctement, alt text vides si absents du PPTX
    
-2. **[BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md](../BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md)** (4h) - Priorité MOYENNE
-   - Fonctionnalité : Descriptions LLM pour toutes les images (sauf charts)
-   - Dépendance : BRIEF_01 doit être implémenté en premier
-   - Format : Blocs ```image-description
+2. **[BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md](../BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md)** 🚧 EN COURS (8h)
+   - Fonctionnalité : Descriptions LLM adaptatives (Mode 1: alt text enrichi, Mode 2: descriptions complètes)
+   - Dépendance : BRIEF_01 ✅ complété
+   - Format : Mode 1: alt text, Mode 2: Blocs ```image-description
    
 3. **[BRIEF_03_CHART_ASCII_ART.md](../BRIEF_03_CHART_ASCII_ART.md)** (8h) - Priorité MOYENNE
    - Fonctionnalité : ASCII art pour charts statistiques (bar, pie, column, line)

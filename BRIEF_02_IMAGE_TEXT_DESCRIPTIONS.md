@@ -2,11 +2,11 @@
 
 **Date:** 10 février 2026 (Mis à jour: 20 février 2026)  
 **Fonctionnalité ROADMAP:** Nouvelle - Descriptions LLM Adaptatives pour Images  
-**Statut:** À Implémenter  
+**Statut:** 🚧 En Cours  
 **Priorité:** 🟡 MOYENNE (Enhancement)  
 **Complexité:** Modérée  
-**Estimation:** 4h (Implémentation: 3h + Tests: 1h)  
-**Dépendances:** `llm_client` configuré (BRIEF_01 optionnel selon mode)
+**Estimation:** 8h (Implémentation: 6h + Tests: 2h)  
+**Dépendances:** `llm_client` configuré, BRIEF_01 ✅ complété
 
 ---
 

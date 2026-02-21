@@ -6,8 +6,8 @@ Ce ROADMAP est le **document maître** organisant les améliorations du converti
 
 | # | Fonctionnalité | Brief | Statut | Priorité |
 |---|---|---|---|---|
-| 0 | Extraction et Sauvegarde Images | [BRIEF_01_IMAGE_EXTRACTION.md](BRIEF_01_IMAGE_EXTRACTION.md) | 📝 Documenté | 🔴 CRITIQUE |
-| 6a | Descriptions Textuelles LLM (Images) | [BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md](BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md) | 📝 Documenté | 🟡 MOYENNE |
+| 0 | Extraction et Sauvegarde Images | [BRIEF_01_IMAGE_EXTRACTION.md](BRIEF_01_IMAGE_EXTRACTION.md) | ✅ Terminé | 🔴 CRITIQUE |
+| 6a | Descriptions Textuelles LLM (Images) | [BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md](BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md) | 🚧 En Cours | 🟡 MOYENNE |
 | 6b | ASCII Art pour Charts Statistiques | [BRIEF_03_CHART_ASCII_ART.md](BRIEF_03_CHART_ASCII_ART.md) | 📝 Documenté | 🟡 MOYENNE |
 | 1 | Listes à Puces Structurées | — | ⏳ À documenter | ⭐⭐⭐ |
 | 2 | Formatage Texte Riche | — | ⏳ À documenter | ⭐⭐⭐ |
