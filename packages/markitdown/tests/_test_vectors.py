@@ -68,7 +68,7 @@ GENERAL_TEST_VECTORS = [
             "AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation",
             "a3f6004b-6f4f-4ea8-bee3-3741f4dc385f",  # chart title
             "2003",  # chart value
-            "![This phrase of the caption is Human-written.](Picture4.jpg)",
+            "![This phrase of the caption is Human-written.](images/slide6_image0.jpg)",  # BRIEF_01: New image naming
         ],
         must_not_include=["data:image/jpeg;base64,/9j/4AAQSkZJRgABAQE"],
     ),
@@ -273,7 +273,7 @@ DATA_URI_TEST_VECTORS = [
             "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQE",
         ],
         must_not_include=[
-            "![This phrase of the caption is Human-written.](Picture4.jpg)",
+            "images/slide6_image0.jpg",  # BRIEF_01: In keep_data_uris mode, should NOT have file paths
         ],
     ),
 ]
