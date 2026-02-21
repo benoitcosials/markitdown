@@ -75,7 +75,7 @@ Based on state analysis, you WILL determine the appropriate phase:
 |----------------|-----------------|-----------------|
 | No research file exists | Start research phase | `#file:task-researcher.agent.md` |
 | Research exists, no plan | Start planning phase | `#file:task-planner.agent.md` |
-| Plan exists with unchecked tasks `[ ]` | Continue implementation | `#file:task-implementation.instructions.md` |
+| Plan exists with unchecked tasks `[ ]` | Continue implementation | `#file:python-expert.agent.md` |
 | All tasks checked `[x]`, feature branch exists | Prepare for merge to develop | Git commands |
 | Feature merged to develop, next brief pending | Start next brief cycle | `#file:task-researcher.agent.md` |
 | All briefs complete on develop | Prepare PR to microsoft/markitdown | PR creation workflow |
@@ -154,18 +154,20 @@ git checkout -b feat/brief-[XX]-[description]
 
 ### Phase 5: Progressive Implementation (Per Brief)
 
-**Objective**: Implement plan systematically with continuous validation.
+**Objective**: Implement plan systematically with continuous validation using Python Expert.
 
-You WILL invoke: `@workspace utilise #file:task-implementation.instructions.md`
+You WILL invoke: `@workspace utilise #file:python-expert.agent.md pour implémenter [BRIEF_XX]`
 
-**The implementation instructions will**:
+**The Python Expert agent will**:
 - ✅ Read plan file with all checkboxes
-- ✅ Implement each task progressively
+- ✅ Implement each task progressively with Python best practices
+- ✅ Apply type hints, clean architecture, and proper error handling
 - ✅ Mark completed tasks `[x]`
 - ✅ Update `.copilot-tracking/changes/YYYYMMDD-[brief]-changes.md` after EVERY task
 - ✅ **[CRITICAL] Use `get_errors` tool after EVERY code modification to detect linting/syntax errors**
 - ✅ **[CRITICAL] Fix all errors reported by `get_errors` before marking task complete**
-- ✅ Validate code before moving to next task
+- ✅ Follow python.instructions.md and self-explanatory-code.instructions.md automatically
+- ✅ Validate code quality before moving to next task
 
 **You MUST monitor progress** by periodically checking plan file checkboxes.
 

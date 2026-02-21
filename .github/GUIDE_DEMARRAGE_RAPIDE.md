@@ -188,8 +188,9 @@ code .
    ├─ Phase 3 : Git Branch
    │  └─ git checkout -b feat/brief-XX-description
    │
-   ├─ Phase 4 : Implementation (task-implementation.instructions.md)
+   ├─ Phase 4 : Implementation (python-expert.agent.md)
    │  ├─ Implémente tâche par tâche ([x] marquage)
+   │  ├─ Applique type hints, clean architecture, qualité Python
    │  ├─ Valide après chaque tâche
    │  └─ Met à jour .copilot-tracking/changes/YYYYMMDD-brief-XX-changes.md
    │

@@ -110,7 +110,7 @@ Pour un **codage autonome maximal**, utiliser l'agent orchestrateur master qui g
 - ✅ Orchestrer les agents spécialisés selon la phase :
   - `task-researcher.agent.md` pour la recherche
   - `task-planner.agent.md` pour la planification
-  - `task-implementation.instructions.md` pour l'implémentation
+  - `python-expert.agent.md` pour l'implémentation (qualité Python maximale)
 - ✅ Gérer le workflow Git (branches, commits, merge)
 - ✅ Valider les tests et respecter les standards
 - ✅ Gérer les dépendances entre briefs
@@ -130,8 +130,8 @@ Pour un **codage autonome maximal**, utiliser l'agent orchestrateur master qui g
   - `.copilot-tracking/prompts/implement-[brief].prompt.md` (prompt d'implémentation)
 
 **Phase 3 : Implémentation** (orchestrée automatiquement)
-- L'orchestrateur invoque `task-implementation.instructions.md`
-- Implémente progressivement avec validation continue
+- L'orchestrateur invoque `python-expert.agent.md`
+- Implémente progressivement avec qualité Python maximale (type hints, clean architecture)
 - Met à jour `.copilot-tracking/changes/YYYYMMDD-[brief]-changes.md`
 
 **Phase 4 : Tests & Merge** (orchestrée automatiquement)
@@ -145,7 +145,7 @@ Pour un **codage autonome maximal**, utiliser l'agent orchestrateur master qui g
 ```bash
 @workspace utilise #file:task-researcher.agent.md pour BRIEF_01
 @workspace utilise #file:task-planner.agent.md pour BRIEF_01  
-@workspace utilise #file:task-implementation.instructions.md
+@workspace utilise #file:python-expert.agent.md pour implémenter BRIEF_01
 ```
 
 **Nouvelle (1 commande orchestrée)** :
@@ -306,7 +306,7 @@ git checkout -b feat/brief-01-image-extraction
 @workspace utilise #file:task-planner.agent.md pour BRIEF_01
 
 # Phase 3 : Implémentation
-@workspace utilise #file:task-implementation.instructions.md
+@workspace utilise #file:python-expert.agent.md pour implémenter BRIEF_01
 ```
 
 ### Sprint 2 : BRIEF_02 (Dépend de BRIEF_01)
@@ -405,7 +405,7 @@ git log --oneline -5
 ```
 @workspace utilise #file:task-researcher.agent.md pour [tâche]
 @workspace utilise #file:task-planner.agent.md pour [tâche]
-@workspace utilise #file:task-implementation.instructions.md
+@workspace utilise #file:python-expert.agent.md pour implémenter [tâche]
 ```
 
 ### Ouvrir un Brief

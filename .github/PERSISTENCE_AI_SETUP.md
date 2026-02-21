@@ -74,9 +74,10 @@ Ces agents sont **orchestrés automatiquement** par le master orchestrator :
    - Détails techniques + prompt d'implémentation
    - Crée 3 fichiers dans `.copilot-tracking/plans/`, `details/`, `prompts/`
 
-3. **task-implementation.instructions.md** (Phase 3 : Implémentation)
+3. **python-expert.agent.md** (Phase 3 : Implémentation)
    - Lecture du plan complet
-   - Implémentation progressive tâche par tâche
+   - Implémentation progressive tâche par tâche avec qualité Python maximale
+   - Type hints, clean architecture, error handling
    - Marquage `[x]` des tâches complètes
    - Mise à jour obligatoire de `changes.md` après chaque tâche
 
@@ -86,7 +87,7 @@ Si vous souhaitez un contrôle fin sur chaque phase :
 ```
 @workspace utilise #file:task-researcher.agent.md pour [description]
 @workspace utilise #file:task-planner.agent.md pour [description]
-@workspace utilise #file:task-implementation.instructions.md
+@workspace utilise #file:python-expert.agent.md pour implémenter [description]
 ```
 
 **Persistence** :
@@ -204,7 +205,7 @@ ls .copilot-tracking/plans/
 
 **Si continuation d'un plan existant** :
 ```
-@workspace utilise #file:task-implementation.instructions.md pour continuer le plan
+@workspace utilise #file:python-expert.agent.md pour continuer le plan
 ```
 
 L'agent va automatiquement :
@@ -235,7 +236,7 @@ git checkout develop
 git pull origin develop
 
 # Reprendre exactement où vous étiez
-@workspace utilise #file:task-implementation.instructions.md
+@workspace utilise #file:python-expert.agent.md pour continuer
 ```
 
 **Le workflow reprendra automatiquement** car :

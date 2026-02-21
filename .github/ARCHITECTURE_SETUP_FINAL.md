@@ -61,7 +61,7 @@ git checkout develop
 **L'orchestrateur**:
 1. ✅ Recherche (task-researcher)
 2. ✅ Planification (task-planner)
-3. ✅ Développement (task-implementation)
+3. ✅ Développement (python-expert)
 4. ✅ **Tests locaux** : `pytest tests/ -v`
 5. ✅ **Validation** : `get_errors` + Ruff
 6. ✅ Commit et push `develop`
@@ -144,7 +144,7 @@ Developer (Vous)                 Tester (Utilisateur Final)
 ├─ BRIEF_01 Développement       │
 │  ├─ task-researcher           │
 │  ├─ task-planner              │
-│  ├─ task-implementation        │
+│  ├─ python-expert              │
 │  ├─ pytest tests/             │
 │  └─ git push develop          │
 │                               │

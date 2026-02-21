@@ -22,9 +22,9 @@ Ce guide explique **quels modèles sont utilisés** par les agents, comment les 
                ▼                                         ▼
    ┌──────────────────────┐              ┌──────────────────────┐
    │ Awesome-Copilot MCP  │              │  Agents Custom       │
-   │ (task-researcher,    │              │  (orchestrator)      │
-   │  task-planner,       │              │                      │
-   │  task-implementation)│              │                      │
+   │ (task-researcher,    │              │  (orchestrator,      │
+   │  task-planner,       │              │   python-expert)     │
+   │  from collections)   │              │                      │
    └──────────────────────┘              └──────────────────────┘
                │                                         │
                └─────────────┬───────────────────────────┘
@@ -39,7 +39,7 @@ Ce guide explique **quels modèles sont utilisés** par les agents, comment les 
 - ✅ `markitdown-orchestrator.agent.md` (votre orchestrateur custom)
 - ✅ `task-researcher.agent.md` (awesome-copilot)
 - ✅ `task-planner.agent.md` (awesome-copilot)
-- ✅ `task-implementation.instructions.md` (awesome-copilot)
+- ✅ `python-expert.agent.md` (installé localement)
 
 **Aucune configuration séparée nécessaire !**
 

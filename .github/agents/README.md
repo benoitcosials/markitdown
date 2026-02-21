@@ -10,7 +10,7 @@ Ce répertoire contient les agents spécialisés qui assistent le développement
 
 **Capacités** :
 - Détection automatique de la phase (recherche, plan, implémentation)
-- Orchestration des agents spécialisés (task-researcher, task-planner, task-implementation)
+- Orchestration des agents spécialisés (task-researcher, task-planner, python-expert)
 - Gestion Git (branches, commits, merge)
 - Validation des tests
 - Gestion des dépendances entre briefs
