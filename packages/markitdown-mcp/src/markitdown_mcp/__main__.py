@@ -1,154 +1,50 @@
-import contextlib
-import os
+# --- MODULE: Entry Point ---
+"""
+MarkItDown MCP Server - Entry Point
+
+Command-line interface for running MarkItDown as an MCP server.
+Supports STDIO mode (default) for direct integration with MCP clients,
+and HTTP/SSE mode (--http) for web-based communication.
+"""
+
+import argparse
 import sys
-import urllib.parse
-from collections.abc import AsyncIterator
-from pathlib import Path
 
 import uvicorn
-from markitdown import MarkItDown
-from mcp.server import Server
-from mcp.server.fastmcp import FastMCP
-from mcp.server.sse import SseServerTransport
-from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.routing import Mount, Route
-from starlette.types import Receive, Scope, Send
 
-# Initialize FastMCP server for MarkItDown (SSE)
-mcp = FastMCP("markitdown")
+from .server import create_starlette_app
+from .tools import mcp
 
 
-@mcp.tool()
-async def convert_to_markdown(
-    uri: str,
-    output_images: bool = True,
-    image_dir: str = "images",
-    skip_background_images: bool = True,
-    skip_icon_images: bool = False,
-) -> str:
-    """Convert a resource described by an http:, https:, file: or data: URI to markdown.
-    
-    Args:
-        uri: Resource URI to convert (http:, https:, file:, or data:)
-        output_images: Extract and save images to disk (default: True)
-        image_dir: Directory for saved images relative to output (default: "images")
-                   For file:// URIs, this is resolved relative to the source file directory.
-        skip_background_images: Skip PowerPoint background placeholder images (default: True)
-        skip_icon_images: Skip icon images, extract only photos (default: False)
-    
-    Returns:
-        Markdown conversion of the resource
-    """
-    # CRITICAL FIX: Resolve image_dir relative to source file for file:// URIs
-    adjusted_image_dir = image_dir
-    
-    if uri.startswith("file://") and output_images:
-        try:
-            # Parse file:// URI to extract OS path
-            file_path_str = urllib.parse.unquote(uri.replace("file:///", ""))
-            source_file = Path(file_path_str)
-            
-            # Get parent directory of source file
-            base_dir = str(source_file.parent)
-            
-            # Resolve image_dir relative to source file's directory
-            adjusted_image_dir = os.path.join(base_dir, image_dir)
-        except (ValueError, OSError) as e:
-            # If URI parsing fails, fall back to default image_dir
-            print(f"Warning: Failed to parse file URI for directory context: {e}")
-            adjusted_image_dir = image_dir
-    
-    kwargs = {
-        "output_images": output_images,
-        "image_dir": adjusted_image_dir,
-        "skip_background_images": skip_background_images,
-        "skip_icon_images": skip_icon_images,
-    }
-    
-    return MarkItDown(enable_plugins=check_plugins_enabled()).convert_uri(uri, **kwargs).markdown
-
-
-
-def check_plugins_enabled() -> bool:
-    return os.getenv("MARKITDOWN_ENABLE_PLUGINS", "false").strip().lower() in (
-        "true",
-        "1",
-        "yes",
-    )
-
-
-def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlette:
-    sse = SseServerTransport("/messages/")
-    session_manager = StreamableHTTPSessionManager(
-        app=mcp_server,
-        event_store=None,
-        json_response=True,
-        stateless=True,
-    )
-
-    async def handle_sse(request: Request) -> None:
-        async with sse.connect_sse(
-            request.scope,
-            request.receive,
-            request._send,
-        ) as (read_stream, write_stream):
-            await mcp_server.run(
-                read_stream,
-                write_stream,
-                mcp_server.create_initialization_options(),
-            )
-
-    async def handle_streamable_http(
-        scope: Scope, receive: Receive, send: Send
-    ) -> None:
-        await session_manager.handle_request(scope, receive, send)
-
-    @contextlib.asynccontextmanager
-    async def lifespan(app: Starlette) -> AsyncIterator[None]:
-        """Context manager for session manager."""
-        async with session_manager.run():
-            print("Application started with StreamableHTTP session manager!")
-            try:
-                yield
-            finally:
-                print("Application shutting down...")
-
-    return Starlette(
-        debug=debug,
-        routes=[
-            Route("/sse", endpoint=handle_sse),
-            Mount("/mcp", app=handle_streamable_http),
-            Mount("/messages/", app=sse.handle_post_message),
-        ],
-        lifespan=lifespan,
-    )
-
-
-# Main entry point
 def main():
-    import argparse
-
+    """Main entry point for MarkItDown MCP server."""
+    # Access underlying MCP server instance for HTTP mode
     mcp_server = mcp._mcp_server
 
-    parser = argparse.ArgumentParser(description="Run a MarkItDown MCP server")
+    parser = argparse.ArgumentParser(
+        description="Run MarkItDown MCP server for file-to-markdown conversion"
+    )
 
     parser.add_argument(
         "--http",
         action="store_true",
-        help="Run the server with Streamable HTTP and SSE transport rather than STDIO (default: False)",
+        help="Run with HTTP/SSE transport instead of STDIO (default: False)",
     )
     parser.add_argument(
         "--sse",
         action="store_true",
-        help="(Deprecated) An alias for --http (default: False)",
+        help="(Deprecated) Alias for --http (default: False)",
     )
     parser.add_argument(
-        "--host", default=None, help="Host to bind to (default: 127.0.0.1)"
+        "--host",
+        default=None,
+        help="Host to bind to (default: 127.0.0.1)"
     )
     parser.add_argument(
-        "--port", type=int, default=None, help="Port to listen on (default: 3001)"
+        "--port",
+        type=int,
+        default=None,
+        help="Port to listen on (default: 3001)"
     )
     args = parser.parse_args()
 

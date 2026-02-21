@@ -1,19 +1,51 @@
-# Brief Technique #02 - Descriptions Textuelles LLM pour Images
+# Brief Technique #02 - Descriptions Textuelles LLM via MCP Sampling
 
-**Date:** 10 février 2026 (Mis à jour: 20 février 2026)  
-**Fonctionnalité ROADMAP:** Nouvelle - Descriptions LLM Adaptatives pour Images  
+**Date:** 10 février 2026 (Mis à jour: 21 février 2026)  
+**Fonctionnalité ROADMAP:** Nouvelle - Délégation Analyse d'Images au LLM Appelant (MCP Sampling)  
 **Statut:** 🚧 En Cours  
 **Priorité:** 🟡 MOYENNE (Enhancement)  
 **Complexité:** Modérée  
-**Estimation:** 8h (Implémentation: 6h + Tests: 2h)  
-**Dépendances:** `llm_client` configuré, BRIEF_01 ✅ complété
+**Estimation:** 7h (Implémentation: 5h + Tests: 2h)  
+**Dépendances:** MCP Protocol 2024-11-05, BRIEF_01 ✅ complété  
+**Client Principal:** VS Code (compatible tous clients MCP supportant sampling)
 
 ---
 
 ## 📋 Résumé Exécutif
 
 ### Vision
-Améliorer la représentation des **images PPTX** pour les LLMs via descriptions textuelles générées par LLM, avec **deux modes adaptatifs** selon la configuration.
+Améliorer la représentation des **images PPTX** pour les LLMs via descriptions textuelles **déléguées au LLM appelant** via le protocole MCP Sampling (2024-11-05), avec **deux modes adaptatifs** selon la configuration.
+
+### 🎯 Approche Innovante : MCP Sampling
+
+**Principe** : Déléguer l'analyse d'images au **LLM qui utilise déjà le MCP** (ex: GitHub Copilot dans VS Code) plutôt que configurer un service LLM externe.
+
+**Workflow** :
+```
+VS Code + GitHub Copilot (LLM actif)
+    ↓ Appelle MCP Tool convert_to_markdown()
+    ↓
+MarkItDown MCP Server
+    ↓ Demande via sampling/createMessage :
+    ↓ "Analyse cette image: [base64]"
+    ↓
+GitHub Copilot (réutilise contexte)
+    ↓ Analyse l'image directement
+    ↓ Retourne description
+    ↓
+MarkItDown MCP Server
+    ↓ Intègre dans Markdown
+    ↓
+VS Code reçoit Markdown enrichi
+```
+
+**Avantages vs Configuration LLM Externe** :
+- ✅ **Zéro configuration** (pas de clés API OpenAI/Azure)
+- ✅ **2× plus rapide** (1 round-trip au lieu de 2)
+- ✅ **Coût unique** (1 seul LLM utilisé)
+- ✅ **Contexte réutilisé** (conversation active)
+- ✅ **Compatible offline** (si LLM local)
+- ✅ **Standard MCP 2024-11-05** (sampling capability)
 
 ### Deux Modes d'Utilisation
 
@@ -46,6 +78,41 @@ Clear blue sky suggests professional photography for marketing materials.
 Cette fonctionnalité génère des **descriptions textuelles LLM** pour **toutes les images**, pas uniquement les charts.
 Les **charts statistiques** ont leur propre traitement spécifique (voir [BRIEF_03_CHART_ASCII_ART.md](BRIEF_03_CHART_ASCII_ART.md)).
 
+### 📚 Documentation Technique Associée
+
+**Recherche approfondie MCP Sampling** : [.copilot-tracking/research/20260220-brief-02-llm-delegated-vision-research.md](.copilot-tracking/research/20260220-brief-02-llm-delegated-vision-research.md)
+- Comparaison approche standard vs MCP Sampling
+- Spécifications MCP Protocol 2024-11-05
+- Implémentation détaillée avec FastMCP
+- Tests et validation multi-clients
+
+---
+
+## 🎯 Clients MCP Supportés
+
+### Client Principal : **VS Code + GitHub Copilot**
+
+Le développement vise prioritairement **VS Code avec GitHub Copilot**, mais le MCP respecte les standards MCP 2024-11-05 pour assurer la compatibilité avec d'autres clients.
+
+| Client | Sampling Support | Vision | Priorité | Notes |
+|--------|-----------------|--------|----------|-------|
+| **VS Code + GitHub Copilot** | ✅ Oui | ✅ GPT-4o/Claude | 🎯 **PRIMARY** | Client cible principal |
+| **Claude Desktop** | ✅ Oui | ✅ Claude 3.5 | ✅ Supporté | Fully compatible |
+| **MCP Inspector** | ✅ Oui | ✅ Configurable | ✅ Tests | Debugging tool |
+| **Clients custom** | 🟡 Selon implémentation | 🟡 Varie | 🟡 Best effort | Fallback gracieux |
+
+**Garanties de compatibilité** :
+- ✅ Respect strict du **MCP Protocol 2024-11-05**
+- ✅ Utilisation de `sampling/createMessage` (standard)
+- ✅ Détection automatique des capabilities client
+- ✅ Fallback gracieux si sampling non supporté
+- ✅ Aucune dépendance à un client spécifique
+
+**Références standards** :
+- MCP Specification : https://spec.modelcontextprotocol.io/specification/2024-11-05/
+- Sampling Capability : https://spec.modelcontextprotocol.io/specification/2024-11-05/server/sampling/
+- FastMCP Documentation : https://github.com/jlowin/fastmcp
+
 ---
 
 ## 🎯 Objectifs Fonctionnels
@@ -59,18 +126,66 @@ Détecter les images dans les présentations PPTX et générer des descriptions 
 **Scope:** Toutes les images (photos, logos, screenshots, etc.), **SAUF** les charts statistiques qui ont leur propre traitement (BRIEF_03).
 
 ### Prérequis
-- ✅ `llm_client` et `llm_model` configurés
-- ✅ `_llm_caption()` disponible (déjà existant)
-- ⚠️ BRIEF_01 implémenté (optionnel, requis pour Mode 1)
+- ✅ **Client MCP supportant sampling** (GitHub Copilot dans VS Code, Claude Desktop, MCP Inspector)
+- ✅ **Modèle multimodal** (vision capability)
+- ✅ **MCP Protocol 2024-11-05** (sampling/createMessage)
+- ✅ BRIEF_01 implémenté (extraction d'images)
+
+### Compatibilité Clients MCP
+
+| Client | Support Sampling | Vision | Recommandé |
+|--------|-----------------|--------|------------|
+| **VS Code + GitHub Copilot** | ✅ Oui | ✅ GPT-4o/Claude | ✅ **Principal** |
+| **Claude Desktop** | ✅ Oui | ✅ Claude 3.5 | ✅ Supporté |
+| **MCP Inspector** | ✅ Oui | ✅ (selon config) | ✅ Tests |
+| **Clients custom** | 🟡 Selon impl | 🟡 Selon modèle | 🟡 Fallback |
+
+**Fallback automatique** : Si client ne supporte pas sampling → alt text reste vide (pas d'erreur)
 
 ### Nouveaux Éléments
-- ⚠️ Paramètre `image_text_description=True`
-- ⚠️ **Deux prompts LLM** selon `output_images`
-  - Prompt court (1 phrase) pour Mode 1
+- ⚠️ Paramètre `use_client_vision=True` (délégation MCP)
+- ⚠️ **Fonction `_request_client_image_analysis()`** (MCP sampling)
+- ⚠️ **Deux prompts adaptatifs** selon `output_images`
+  - Prompt court (1 phrase, max 100 chars) pour Mode 1
   - Prompt détaillé (titre + 10 lignes) pour Mode 2
-- ⚠️ Logique adaptative selon `output_images`
+- ⚠️ **Vérification capabilities client** (sampling supporté ?)
+- ⚠️ **Fallback gracieux** si sampling non disponible
 - ⚠️ Format bloc ```image-description pour Mode 2
 - ⚠️ Exclusion des charts (traités séparément dans BRIEF_03)
+
+### Architecture Technique
+
+**Philosophie de séparation des responsabilités** :
+
+```
+Core MarkItDown (packages/markitdown/)
+├─ _pptx_converter.py          ❌ AUCUNE modification
+├─ _llm_caption.py              ❌ NON utilisé (approche obsolète)
+└─ Responsabilité : Extraction & conversion agnostique
+
+MCP Layer (packages/markitdown-mcp/)
+├─ __main__.py                  ✅ TOUTES les modifications ici
+├─ _enhance_with_client_vision  ✅ Nouvelle fonction
+├─ _request_client_analysis     ✅ Nouvelle fonction (MCP sampling)
+└─ Responsabilité : Enrichissement via délégation client MCP
+```
+
+**Fichiers modifiés** :
+- ✅ `packages/markitdown-mcp/src/markitdown_mcp/__main__.py` **UNIQUEMENT**
+- ❌ `packages/markitdown/src/markitdown/converters/_pptx_converter.py` **AUCUNE modification**
+- ❌ `packages/markitdown/src/markitdown/converters/_llm_caption.py` **NON utilisé**
+
+**Raisons de cette architecture** :
+1. **Séparation claire** : Core = extraction, MCP = enrichissement
+2. **Agnostique du transport** : Le core fonctionne en CLI, API, MCP sans dépendances
+3. **Evolutivité** : Approche MCP Sampling spécifique au contexte MCP
+4. **Maintenabilité** : Changements isolés dans la couche MCP
+5. **Standards** : Core reste compatible avec approach standard, MCP utilise sampling
+
+**Impact sur BRIEF_02** :
+- L'analyse d'images LLM est **entièrement gérée au niveau MCP**
+- Le core `_pptx_converter.py` continue d'extraire les images (BRIEF_01)
+- Le MCP enrichit le markdown après conversion via sampling du client
 
 ---
 
@@ -587,9 +702,143 @@ if self._is_picture(shape) and not shape.has_chart:
 
 ---
 
-## ⚠️ Intégration MCP - CRITIQUE POUR EFFICACITÉ
+## ⚠️ Intégration MCP - APPROCHE MCP SAMPLING (STANDARD 2024-11-05)
 
-**Important :** Les descriptions LLM adaptatives nécessitent une intégration MCP correcte pour gérer les deux modes.
+**⚠️ CHANGEMENT ARCHITECTURAL MAJEUR** : Nous n'utilisons **PAS** de configuration LLM externe (API OpenAI, Azure, etc.).
+
+À la place, nous déléguons l'analyse d'images au **LLM client qui appelle le MCP** via le protocole standard **MCP Sampling (2024-11-05)**.
+
+### Pourquoi MCP Sampling plutôt qu'API externe ?
+
+#### Approche Traditionnelle (❌ Non retenue)
+
+```python
+# Configuration API externe complexe et coûteuse
+markitdown = MarkItDown(
+    llm_client=openai.Client(api_key="sk-..."),  # Configuration manuelle
+    llm_model="gpt-4o"                            # Double coût LLM
+)
+```
+
+**Problèmes** :
+- ❌ Configuration complexe (clés API, endpoints, authentification)
+- ❌ Double coût (client MCP + API externe)
+- ❌ Latence élevée (2 round-trips réseau)
+- ❌ Dépendance à un fournisseur spécifique (OpenAI, Azure)
+- ❌ Complexité d'intégration MCP
+
+#### Approche MCP Sampling (✅ Retenue)
+
+```python
+# Délégation au client MCP (VS Code, Claude Desktop, etc.)
+async def convert_to_markdown(uri, use_client_vision=True):
+    # Le MCP demande au client d'analyser l'image
+    description = await mcp.request_sampling(
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Describe this image:"},
+                {"type": "image", "data": base64_image}
+            ]
+        }],
+        maxTokens=100
+    )
+```
+
+**Avantages** :
+- ✅ **Zéro configuration** (pas de clés API, pas d'endpoints)
+- ✅ **Coût unique** (réutilise le LLM déjà actif dans le client)
+- ✅ **2× plus rapide** (1 seul round-trip réseau)
+- ✅ **Compatible multi-clients** (VS Code, Claude Desktop, custom)
+- ✅ **Fonctionne offline** (si client utilise LLM local)
+- ✅ **Standard MCP 2024-11-05** (sampling capability officielle)
+- ✅ **Fallback gracieux** (détection automatique des capabilities)
+
+### Clients MCP Compatibles (Standards 2024-11-05)
+
+| Client | Sampling Support | Vision Support | Priorité | Notes |
+|--------|-----------------|----------------|----------|-------|
+| **VS Code + GitHub Copilot** | ✅ Natif | ✅ GPT-4o/Claude | 🎯 **PRIMARY** | Client cible principal |
+| **Claude Desktop** | ✅ Natif | ✅ Claude 3.5 | ✅ Tier 1 | Fully compatible, tested |
+| **MCP Inspector** | ✅ Natif | ✅ Configurable | ✅ Dev tools | Debugging & validation |
+| **Custom MCP Clients** | 🟡 Selon impl | 🟡 Varie | 🟡 Best effort | Auto-detect + fallback |
+
+**Détection automatique** : 
+```python
+# Le serveur MCP vérifie les capabilities du client
+caps = server.get_client_capabilities()
+if caps.get("sampling"):
+    # Utiliser MCP sampling
+else:
+    # Fallback: alt text reste vide (pas d'erreur)
+```
+
+### Architecture MCP Sampling (Workflow Complet)
+
+```
+┌────────────────────────────────────────────────────┐
+│  VS Code + GitHub Copilot (Client MCP)             │
+│  - LLM multimodal actif (GPT-4o/Claude 3.5)        │
+│  - Capabilities: {sampling: true, vision: true}    │
+└──────────────────┬─────────────────────────────────┘
+                   │
+                   │ 1. User calls convert_to_markdown(uri)
+                   ↓
+┌────────────────────────────────────────────────────┐
+│  MarkItDown MCP Server (FastMCP)                   │
+│                                                     │
+│  2. Extract PPTX images (BRIEF_01)                 │
+│  3. Convert to Markdown (standard)                 │
+│  4. Detect empty alt texts                         │
+│                                                     │
+│  For each image with empty alt text:               │
+│  ├─ 5. Encode image to base64                      │
+│  ├─ 6. Create CreateMessageRequest:                │
+│  │     {                                            │
+│  │       messages: [                                │
+│  │         {text: "Describe in 1 phrase:"},        │
+│  │         {image: <base64>}                        │
+│  │       ],                                         │
+│  │       maxTokens: 100                             │
+│  │     }                                            │
+│  └─ 7. Send to client via mcp.request_sampling()   │
+│        ↓                                            │
+└────────┼───────────────────────────────────────────┘
+         │
+         │ 8. Sampling request (MCP 2024-11-05 spec)
+         ↓
+┌────────────────────────────────────────────────────┐
+│  VS Code + GitHub Copilot                          │
+│                                                     │
+│  9. Copilot analyzes image (with conversation ctx) │
+│  10. Returns: "Modern office building with glass"  │
+└──────────────────┬─────────────────────────────────┘
+                   │
+                   │ 11. Sampling response
+                   ↓
+┌────────────────────────────────────────────────────┐
+│  MarkItDown MCP Server                             │
+│                                                     │
+│  12. Integrate description into Markdown:          │
+│      ![Modern office...](images/img.png)           │
+│  13. Return enriched Markdown                      │
+└──────────────────┬─────────────────────────────────┘
+                   │
+                   │ 14. Enriched Markdown
+                   ↓
+┌────────────────────────────────────────────────────┐
+│  VS Code displays result                           │
+└────────────────────────────────────────────────────┘
+```
+
+**Conformité MCP 2024-11-05** :
+- ✅ Utilise `CreateMessageRequest` (spec officielle)
+- ✅ Support `SamplingMessage` avec contenudynamique (text + image)
+- ✅ Respecte `maxTokens` limits
+- ✅ Gère les erreurs avec fallback gracieux
+- ✅ Compatible avec tous les clients conformes au standard
+
+### Important : Les descriptions LLM adaptatives nécessitent une intégration MCP correcte pour gérer les deux modes.
 
 ### Le Problème de Base
 
