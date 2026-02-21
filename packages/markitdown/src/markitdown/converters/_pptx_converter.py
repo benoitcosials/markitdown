@@ -203,7 +203,8 @@ class PptxConverter(DocumentConverter):
                         pass
 
                     # Prepare the alt, escaping any special characters
-                    alt_text = "\n".join([llm_description, alt_text]) or shape.name
+                    # Note: If alt_text is empty, it will remain empty (BRIEF_02 will handle LLM generation)
+                    alt_text = "\n".join(filter(None, [llm_description, alt_text]))
                     alt_text = re.sub(r"[\r\n\[\]]", " ", alt_text)
                     alt_text = re.sub(r"\s+", " ", alt_text).strip()
 

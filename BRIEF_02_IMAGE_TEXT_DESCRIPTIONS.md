@@ -1,23 +1,31 @@
 # Brief Technique #02 - Descriptions Textuelles LLM pour Images
 
-**Date:** 10 février 2026  
-**Fonctionnalité ROADMAP:** Nouvelle - Remplacement Images par Descriptions Textuelles  
+**Date:** 10 février 2026 (Mis à jour: 20 février 2026)  
+**Fonctionnalité ROADMAP:** Nouvelle - Descriptions LLM Adaptatives pour Images  
 **Statut:** À Implémenter  
 **Priorité:** 🟡 MOYENNE (Enhancement)  
 **Complexité:** Modérée  
 **Estimation:** 4h (Implémentation: 3h + Tests: 1h)  
-**Dépendances:** BRIEF_01 (extraction d'images) + `llm_client` configuré
+**Dépendances:** `llm_client` configuré (BRIEF_01 optionnel selon mode)
 
 ---
 
 ## 📋 Résumé Exécutif
 
 ### Vision
-Améliorer la représentation des **images PPTX** pour les LLMs en **remplaçant l'image par une description contextuelle textuelle** générée par LLM.
+Améliorer la représentation des **images PPTX** pour les LLMs via descriptions textuelles générées par LLM, avec **deux modes adaptatifs** selon la configuration.
 
-### Approche
-Au lieu d'afficher `![Image](images/photo.png)`, générer un bloc de texte contextuel :
+### Deux Modes d'Utilisation
+
+#### Mode 1 : Alt Text Amélioré (avec extraction `output_images=True`)
+Générer un **alt text en une phrase** si non existant pour enrichir l'affichage des images extraites :
+```markdown
+![Modern corporate office building with glass facade and landscaped entrance](images/slide1_image0.jpg)
 ```
+
+#### Mode 2 : Description Complète (sans extraction `output_images=False`)
+Générer un **bloc de description contextuelle** détaillé pour remplacer l'image :
+```markdown
 ```image-description
 Company Office Building - Exterior View
 
@@ -28,11 +36,11 @@ Clear blue sky suggests professional photography for marketing materials.
 ```
 
 ### Bénéfices
-- ✅ Meilleure compréhension par les LLMs (texte vs image)
-- ✅ Accessibilité améliorée
-- ✅ Tokens économisés (texte < base64)
-- ✅ Fallback gracieux (affiche image si LLM absent)
-- ✅ Applicable à **tous types d'images** (photos, logos, screenshots, etc.)
+- ✅ Mode adaptatif selon contexte utilisateur (avec/sans fichiers)
+- ✅ Alt text enrichi automatiquement pour accessibilité
+- ✅ Mode "pure text" pour environnements contraints (tokens, stockage)
+- ✅ Meilleure compréhension par les LLMs dans les deux modes
+- ✅ Fallback gracieux (affiche image/nom si LLM absent)
 
 ### ⚠️ Note Importante
 Cette fonctionnalité génère des **descriptions textuelles LLM** pour **toutes les images**, pas uniquement les charts.
@@ -43,36 +51,69 @@ Les **charts statistiques** ont leur propre traitement spécifique (voir [BRIEF_
 ## 🎯 Objectifs Fonctionnels
 
 ### Objectif Principal
-Détecter les images dans les présentations PPTX et les remplacer par des descriptions contextuelles LLM (titre + max 10 lignes) pour améliorer la lisibilité LLM.
+Détecter les images dans les présentations PPTX et générer des descriptions LLM **adaptées au mode d'utilisation** :
+
+- **Mode 1 (avec extraction)** : Générer alt text en une phrase si absent/vide
+- **Mode 2 (sans extraction)** : Générer description contextuelle complète (titre + max 10 lignes)
 
 **Scope:** Toutes les images (photos, logos, screenshots, etc.), **SAUF** les charts statistiques qui ont leur propre traitement (BRIEF_03).
 
 ### Prérequis
-- ✅ BRIEF_01 implémenté (sauvegarde d'images fonctionne)
 - ✅ `llm_client` et `llm_model` configurés
 - ✅ `_llm_caption()` disponible (déjà existant)
+- ⚠️ BRIEF_01 implémenté (optionnel, requis pour Mode 1)
 
 ### Nouveaux Éléments
 - ⚠️ Paramètre `image_text_description=True`
-- ⚠️ Prompt LLM spécifique pour images
-- ⚠️ Format bloc ```image-description
-- ⚠️ Logique de remplacement (pas d'affichage image)
+- ⚠️ **Deux prompts LLM** selon `output_images`
+  - Prompt court (1 phrase) pour Mode 1
+  - Prompt détaillé (titre + 10 lignes) pour Mode 2
+- ⚠️ Logique adaptative selon `output_images`
+- ⚠️ Format bloc ```image-description pour Mode 2
 - ⚠️ Exclusion des charts (traités séparément dans BRIEF_03)
 
 ---
 
 ## 📝 Cas d'Usage
 
-### Use Case 1 : Image avec Description Contextuelle
+### Use Case 1 : Mode 1 - Alt Text Amélioré (avec extraction)
 ```
-Input:  presentation.pptx (avec 1 photo de bureau)
-Option: image_text_description=True, llm_client=..., llm_model="gpt-4o"
+Input:  presentation.pptx (avec 1 photo de bureau sans alt text)
+Option: 
+  - output_images=True
+  - image_text_description=True
+  - llm_client=...
+  - llm_model="gpt-4o"
 
 Output:
   - output.md
-  - images/slide1_image0.jpg (sauvegardé mais non affiché)
+  - images/slide1_image0.jpg
 
-Exemple Markdown:
+Markdown:
+![Modern corporate office building with glass facade and landscaped entrance](images/slide1_image0.jpg)
+```
+
+**Comportement:**
+- Image détectée via `_is_picture(shape)`
+- **Exclusion** : Si `shape.has_chart == True` → ignorer (traité dans BRIEF_03)
+- Image sauvegardée (BRIEF_01)
+- Alt text PowerPoint récupéré
+- **Si alt text vide/absent** → Génération LLM d'une phrase concise
+- Image **affichée** avec alt text enrichi
+
+### Use Case 2 : Mode 2 - Description Complète (sans extraction)
+```
+Input:  presentation.pptx (avec 1 photo de bureau)
+Option: 
+  - output_images=False
+  - image_text_description=True
+  - llm_client=...
+  - llm_model="gpt-4o"
+
+Output:
+  - output.md (SANS dossier images/)
+
+Markdown:
 ```image-description
 Office Team Meeting Photo
 
@@ -86,55 +127,54 @@ materials.
 ```
 
 **Comportement:**
-- Image détectée via `_is_picture(shape)`
-- **Exclusion** : Si `shape.has_chart == True` → ignorer (traité dans BRIEF_03)
-- Image sauvegardée (via BRIEF_01)
-- Image **NON affichée** dans Markdown
-- Bloc texte généré par LLM (titre + description 10 lignes max)
+- Image détectée, **NON sauvegardée** (output_images=False)
+- **Exclusion** : Si `shape.has_chart == True` → ignorer
+- Génération LLM description complète (titre + max 10 lignes)
+- Bloc ```image-description dans Markdown
+- Aucun fichier image créé
 
-### Use Case 2 : Image Sans LLM (Fallback)
+### Use Case 3 : Sans LLM (Fallbacks)
+
+**Mode 1 (avec extraction) :**
 ```
-Input:  presentation.pptx (avec 1 image)
-Option: image_text_description=True (SANS llm_client)
-
-Output:
-  - output.md
-  - images/slide1_image0.png
+Option: output_images=True, image_text_description=True (SANS llm_client)
 
 Markdown:
-![Company Logo](images/slide1_image0.png)
+![Picture 1](images/slide1_image0.png)  ← Fallback au nom du shape
+```
+
+**Mode 2 (sans extraction) :**
+```
+Option: output_images=False, image_text_description=True (SANS llm_client)
+
+Markdown:
+**Image:** Picture 1  ← Fallback texte simple (évite liens cassés)
 ```
 
 **Comportement:**
-- `llm_client` absent → pas de description générée
-- Fallback : affiche l'image normalement (comme BRIEF_01)
+- `llm_client` absent → pas de génération LLM
+- Mode 1 : Affiche image avec nom du shape comme alt text
+- Mode 2 : Affiche nom du shape en texte simple (évite `![]()`cassé)
 - Comportement graceful (pas d'erreur)
 
-### Use Case 3 : Mix Images Normales + Charts
+### Use Case 4 : Mix Images Normales + Charts
 ```
 Input:  presentation.pptx (1 photo + 1 chart)
-Option: image_text_description=True, llm_client=..., llm_model="..."
-
-Output:
-  - output.md
-  - images/slide1_image0.jpg (photo)
-  - images/slide2_image0.png (chart)
+Option: output_images=False, image_text_description=True, llm_client=...
 
 Markdown:
 ```image-description
 Company Photo: Exterior Building View
-...
+Modern glass and steel architecture...
 ```
 
-![Sales Chart](images/slide2_image0.png)  ← Chart affiché normalement
+**Chart:** Sales Performance Q4 2025  ← Chart exclu (pas de description)
 ```
 
 **Comportement:**
-- Photos normales → remplacées par blocs texte (BRIEF_02)
-- **Charts (`shape.has_chart`) → affichés comme images** (exclus du traitement BRIEF_02)
-- Charts ont leur propre traitement dans BRIEF_03
-
-### Use Case 4 : Chart avec Prompt Personnalisé
+- Photos normales → descriptions complètes (BRIEF_02 Mode 2)
+- **Charts (`shape.has_chart`) → nom du shape** (traités dans BRIEF_03)
+- Séparation claire entre images et charts
 ```
 Input:  presentation.pptx (avec chart)
 Option: 
@@ -155,39 +195,67 @@ Output:
 
 | Paramètre | Type | Défaut | Description | Status |
 |-----------|------|--------|---|---|
-| `image_text_description` | bool | `False` | Remplacer images par descriptions textuelles LLM | À implémenter |
+| `image_text_description` | bool | `False` | Activer génération LLM de descriptions pour images | À implémenter |
 
-**Note:** Génère des **descriptions textuelles LLM** pour **toutes les images**, sauf charts (voir BRIEF_03).
+**Note:** Comportement **adaptatif** selon `output_images` :
+- **Mode 1** (`output_images=True`) : Génère alt text en une phrase si absent/vide
+- **Mode 2** (`output_images=False`) : Génère description complète (titre + max 10 lignes)
 
-### Format de Sortie
+### Formats de Sortie
 
-**Bloc de Code Markdown:**
+#### Mode 1 : Alt Text Enrichi
 ```markdown
-```chart-description
-[Ligne 1: Titre du chart]
-
-[Lignes 2-11: Description contextuelle LLM]
-[Maximum 10 lignes de texte]
-```
+![<description LLM en une phrase>](images/slide1_image0.jpg)
 ```
 
-**Exemple:**
+#### Mode 2 : Bloc de Description
 ```markdown
-```chart-description
-Pie Chart: Market Share Distribution
+```image-description
+<Ligne 1: Titre de l'image>
 
-The pie chart displays the market share distribution across four major competitors.
-Company A leads with 42%, followed by Company B at 28%, Company C at 19%, and
-Company D at 11%. This indicates a moderately concentrated market with clear
-leadership but room for competitive dynamics.
+<Lignes 2-11: Description contextuelle LLM>
+<Maximum 10 lignes de texte>
 ```
 ```
 
-### Prompt LLM
+### Prompts LLM Adaptatifs
 
-**Prompt par Défaut:**
+#### Prompt Mode 1 (Alt Text Court)
 ```python
-image_prompt = (
+# Génère une phrase concise pour alt text
+alt_text_prompt = (
+    "Describe this image in a single concise sentence suitable for alt text. "
+    "Focus on the main subject and key visual elements. "
+    "Maximum 100 characters."
+)
+```
+
+**Exemple sortie** :
+```
+"Modern corporate office building with glass facade and landscaped entrance"
+```
+
+#### Prompt Mode 2 (Description Complète)
+```python
+# Génère titre + description détaillée
+full_description_prompt = (
+    "Provide a title for this image on the first line, "
+    "then a contextual description in maximum 10 lines explaining "
+    "what the image shows, key details, and likely purpose. "
+    "Use descriptive language suitable for text-only consumption."
+)
+```
+
+**Exemple sortie** :
+```
+Office Team Meeting Photo
+
+Professional photograph showing diverse team of 6 people seated around
+conference table reviewing documents. Modern office setting with natural
+lighting from large windows. Collaborative atmosphere evident from body
+language and engaged expressions. Likely used for HR or company culture
+materials.
+```
     "Provide a title for this image on the first line, "
     "then a contextual description in maximum 10 lines explaining "
     "what the image shows, key details, and likely purpose."
@@ -218,18 +286,19 @@ if self._is_picture(shape) and not shape.has_chart:
 
 ### Principes
 
-1. **Réutiliser l'existant**
+1. **Comportement Adaptatif**
+   - ✅ Mode détecté automatiquement via `output_images`
+   - ✅ Prompts différents selon mode
+   - ✅ Sortie adaptée au contexte
+
+2. **Réutiliser l'existant**
    - ✅ Utiliser `llm_caption()` existant
    - ✅ Pas de nouvelles méthodes nécessaires
    - ✅ Intégration dans `get_shape_content()`
 
-2. **Modularité**
-   - ✅ Marqueurs `# --- MODULE: Chart Contextual Description ---`
-   - ✅ Code facile à désactiver
-
 3. **Fallback gracieux**
-   - ✅ Si `llm_client` absent → affiche image normale
-   - ✅ Si génération échoue → affiche image normale
+   - ✅ Si `llm_client` absent → comportements par défaut
+   - ✅ Si génération échoue → comportements par défaut
 
 ### Fichier à Modifier
 
@@ -239,202 +308,267 @@ if self._is_picture(shape) and not shape.has_chart:
 
 #### Modification `get_shape_content()` - Détection Images
 
-**Localisation:** Ligne ~150 (APRÈS le bloc d'extraction d'images de BRIEF_01)
+**Localisation:** Ligne ~150 (logique d'images existante)
 
 ```python
 # --- MODULE: Image Text Description (BRIEF_02) ---
-if self._is_picture(shape) and not shape.has_chart and kwargs.get("image_text_description", False):
+if self._is_picture(shape) and not shape.has_chart:
     """
-    Images détectées : remplacer image par description contextuelle LLM.
-    Nécessite llm_client et llm_model configurés.
-    Fallback : affiche image normalement si LLM absent.
+    Traitement des images selon configuration :
+    - Mode 1 (output_images=True) : Alt text enrichi si absent
+    - Mode 2 (output_images=False) : Description complète
     
-    IMPORTANT: Exclut les charts (shape.has_chart == True) qui sont traités dans BRIEF_03.
+    IMPORTANT: Exclut les charts (shape.has_chart == True) traités dans BRIEF_03.
     """
     
     llm_client = kwargs.get("llm_client")
     llm_model = kwargs.get("llm_model")
     output_images = kwargs.get("output_images", True)
+    image_text_description = kwargs.get("image_text_description", False)
     image_dir = kwargs.get("image_dir", "images")
-    deduplicate_images = kwargs.get("deduplicate_images", False)
     
-    if llm_client and llm_model:
-        # Sauvegarder l'image (mais ne pas l'afficher)
-        if output_images:
-            image_path, _ = self._save_image(
-                shape, slide_num, image_count, image_dir, deduplicate_images
-            )
-            image_count += 1  # Incrémenter même si non affiché
+    # Récupérer alt text existant (PowerPoint ou LLM précédent)
+    alt_text = ""
+    try:
+        alt_text = shape._element._nvXxPr.cNvPr.attrib.get("descr", "")
+    except Exception:
+        pass
+    
+    # Appliquer logique selon mode
+    if image_text_description and llm_client and llm_model:
         
-        # Générer description contextuelle via LLM
-        chart_prompt = kwargs.get("llm_prompt") or (
-            "Provide a title for this chart on the first line, "
-            "then a contextual description in maximum 10 lines explaining "
-            "what the chart shows, key insights, and trends."
+        # Préparer stream pour LLM
+        image_stream = io.BytesIO(shape.image.blob)
+        image_stream_info = StreamInfo(
+            mimetype=shape.image.content_type,
+            extension=os.path.splitext(shape.image.filename or "")[1],
         )
         
-        try:
-            # Préparer stream pour llm_caption
-            image_stream = io.BytesIO(shape.image.blob)
-            image_stream_info = StreamInfo(
-                mimetype=shape.image.content_type,
-                extension=os.path.splitext(shape.image.filename or "")[1],
-            )
-            
-            # Appeler llm_caption existant avec prompt spécifique
-            chart_description = llm_caption(
-                image_stream,
-                image_stream_info,
-                client=llm_client,
-                model=llm_model,
-                prompt=chart_prompt
-            )
-            
-            if chart_description:
-                # REMPLACER l'image par un bloc de code
-                md_content += f"\n```chart-description\n{chart_description}\n```\n"
-            else:
-                # Fallback : afficher image normalement
-                md_content += f"\n![{alt_text}]({image_path})\n"
-        
-        except Exception as e:
-            # Fallback en cas d'erreur : afficher image normalement
-            if output_images and image_path:
-                md_content += f"\n![{alt_text}]({image_path})\n"
-            else:
-                # Dernier fallback : lien cassé (mode legacy)
-                filename = re.sub(r"\W", "", shape.name) + ".jpg"
-                md_content += f"\n![{alt_text}]({filename})\n"
-    
-    else:
-        # Pas de LLM : afficher image normalement (fallback)
+        # MODE 1 : Alt Text Enrichi (avec extraction)
         if output_images:
+            # Sauvegarder l'image (BRIEF_01)
             image_path, deduplicated = self._save_image(
-                shape, slide_num, image_count, image_dir, deduplicate_images
+                shape, slide_num, image_count, image_dir, 
+                kwargs.get("deduplicate_images", False)
             )
-            md_content += f"\n![{alt_text}]({image_path})\n"
             if not deduplicated:
                 image_count += 1
+            
+            # Générer alt text SEULEMENT si absent/vide
+            if not alt_text or not alt_text.strip():
+                short_prompt = kwargs.get("llm_prompt") or (
+                    "Describe this image in a single concise sentence "
+                    "suitable for alt text. Focus on the main subject and "
+                    "key visual elements. Maximum 100 characters."
+                )
+                
+                try:
+                    alt_text = llm_caption(
+                        image_stream, image_stream_info,
+                        client=llm_client, model=llm_model, prompt=short_prompt
+                    )
+                    # Nettoyer (enlever newlines, limiter à 100 chars)
+                    alt_text = re.sub(r"\s+", " ", alt_text).strip()[:100]
+                except Exception:
+                    # Fallback au nom du shape
+                    alt_text = shape.name or "Image"
+            
+            # Afficher image avec alt text enrichi
+            # Escape special chars
+            alt_text = re.sub(r"[\[\]]", " ", alt_text).strip()
+            md_content += f"\n![{alt_text}]({image_path})\n"
+        
+        # MODE 2 : Description Complète (sans extraction)
         else:
-            # Legacy mode
-            filename = re.sub(r"\W", "", shape.name) + ".jpg"
-            md_content += f"\n![{alt_text}]({filename})\n"
-
-# Si ce n'est PAS un chart, continuer avec logique BRIEF_01 normale
-elif self._is_picture(shape):
-    # Logique BRIEF_01 ici (extraction normale d'images)
-    ...
+            full_prompt = kwargs.get("llm_prompt") or (
+                "Provide a title for this image on the first line, "
+                "then a contextual description in maximum 10 lines explaining "
+                "what the image shows, key details, and likely purpose. "
+                "Use descriptive language suitable for text-only consumption."
+            )
+            
+            try:
+                description = llm_caption(
+                    image_stream, image_stream_info,
+                    client=llm_client, model=llm_model, prompt=full_prompt
+                )
+                
+                # Afficher en bloc description
+                md_content += f"\n```image-description\n{description}\n```\n"
+            except Exception:
+                # Fallback : afficher nom du shape en texte
+                shape_name = shape.name or "Image"
+                md_content += f"\n**Image:** {shape_name}\n"
+    
+    else:
+        # Pas de LLM ou feature désactivée → comportement par défaut
+        if output_images:
+            # BRIEF_01 : Extraction normale
+            image_path, deduplicated = self._save_image(
+                shape, slide_num, image_count, image_dir,
+                kwargs.get("deduplicate_images", False)
+            )
+            if not deduplicated:
+                image_count += 1
+            
+            # Utiliser alt text existant ou fallback vers shape.name
+            final_alt = "\n".join(filter(None, ["", alt_text])) or shape.name
+            final_alt = re.sub(r"[\r\n\[\]]", " ", final_alt).strip()
+            md_content += f"\n![{final_alt}]({image_path})\n"
+        else:
+            # Pas d'extraction : afficher nom du shape (évite lien cassé)
+            shape_name = shape.name or "Image"
+            md_content += f"\n**Image:** {shape_name}\n"
 # --- END MODULE ---
 ```
 
-**Note:** Ce bloc doit être placé **AVANT** le bloc d'extraction normale d'images de BRIEF_01, pour intercepter les charts en premier.
+**Note:** Ce bloc remplace TOUTE la logique d'images dans `get_shape_content()`, interceptant les images AVANT le traitement BRIEF_01.
 
 ---
 
 ## 🧪 Tests
 
-### Test 1 : Chart avec Description LLM
-**Input:** PPTX avec 1 bar chart  
-**Option:** `chart_text_description=True, llm_client=..., llm_model="gpt-4o"`  
+### Test 1 : Mode 1 - Alt Text Enrichi (avec LLM)
+**Input:** PPTX avec 2 images (l'une avec alt texte, l'autre sans)  
+**Option:** `image_text_description=True, output_images=True, llm_client=..., llm_model="gpt-4o"`  
 **Expected:**
 ```
-✅ images/slide1_image0.png sauvegardé
-✅ Image NON affichée dans Markdown
-✅ Bloc chart-description présent
-✅ Contient titre (ligne 1) + description (max 10 lignes)
+✅ images/slide1_image0.png et image1.png sauvegardés
+✅ Image AVEC alt text existant : ![Alt text PowerPoint](images/slide1_image0.png)
+✅ Image SANS alt text : ![LLM generated alt text](images/slide1_image1.png)
+✅ Alt text LLM max 100 chars, 1 phrase
+✅ Aucun bloc image-description
 ```
 
-### Test 2 : Chart Sans LLM (Fallback)
-**Input:** PPTX avec 1 chart  
-**Option:** `chart_text_description=True` (SANS llm_client)  
+### Test 2 : Mode 2 - Description Complète (avec LLM)
+**Input:** PPTX avec 2 images  
+**Option:** `image_text_description=True, output_images=False, llm_client=..., llm_model="gpt-4o"`  
+**Expected:**
+```
+✅ Aucun fichier image créé
+✅ Blocs image-description présents (titre + 10 lignes)
+✅ Aucune syntaxe ![...](...)
+✅ Descriptions détaillées pour chaque image
+```
+
+### Test 3 : Mode 1 Sans LLM (Fallback)
+**Input:** PPTX avec image sans alt text  
+**Option:** `image_text_description=True, output_images=True` (SANS llm_client)  
 **Expected:**
 ```
 ✅ images/slide1_image0.png sauvegardé
-✅ Image AFFICHÉE normalement : ![...](images/slide1_image0.png)
-✅ Aucun bloc chart-description
+✅ Image affichée : ![Picture 1](images/slide1_image0.png)
+✅ Alt text fallback vers shape.name (BRIEF_01)
 ✅ Pas d'erreur
 ```
 
-### Test 3 : Mix Images Normales + Charts
-**Input:** PPTX avec 1 photo + 1 chart  
-**Option:** `chart_text_description=True, llm_client=..., llm_model="..."`  
-**Expected:**
-```
-✅ Photo : ![...](images/slide1_image0.jpg) (affichée)
-✅ Chart : ```chart-description\n...\n``` (bloc texte)
-✅ Comportements différents selon has_chart
-```
-
-### Test 4 : Prompt Personnalisé
-**Input:** PPTX avec chart  
-**Option:** `chart_text_description=True, llm_model="...", llm_prompt="Focus on trends"`  
-**Expected:**
-```
-✅ Description générée avec orientation "trends"
-✅ Bloc chart-description reflète le prompt custom
-```
-
-### Test 5 : Erreur LLM (Fallback)
-**Input:** PPTX avec chart  
-**Option:** `chart_text_description=True, llm_client=invalid`  
-**Expected:**
-```
-✅ Exception capturée
-✅ Fallback : image affichée normalement
-✅ Pas de crash
-```
-
-### Test 6 : Chart + Mode Base64
-**Input:** PPTX avec chart  
-**Option:** `chart_text_description=True, keep_data_uris=True, llm_client=..., llm_model="..."`  
+### Test 4 : Mode 2 Sans LLM (Fallback)
+**Input:** PPTX avec image  
+**Option:** `image_text_description=True, output_images=False` (SANS llm_client)  
 **Expected:**
 ```
 ✅ Aucun fichier créé
-✅ Bloc chart-description généré (base64 ignoré pour charts)
-OU
-✅ Image base64 affichée (selon préférence design)
+✅ Texte simple : **Image:** Picture 1
+✅ Aucun bloc image-description
+✅ Pas d'erreur
 ```
 
-**Note:** Décision design à valider : chart_text_description + keep_data_uris → lequel prioritaire ?
+### Test 5 : Mix Images + Charts
+**Input:** PPTX avec 1 photo + 1 chart  
+**Option:** `image_text_description=True, output_images=True, llm_client=..., llm_model="..."`  
+**Expected:**
+```
+✅ Photo : ![LLM alt text](images/slide1_image0.jpg) (enrichi si pas alt text)
+✅ Chart : Image normale (pas de traitement BRIEF_02)
+✅ Charts exclus car gérés dans BRIEF_03
+```
+
+### Test 6 : Prompt Personnalisé Mode 1
+**Input:** PPTX avec image sans alt text  
+**Option:** `image_text_description=True, output_images=True, llm_client=..., llm_prompt="Focus on colors"`  
+**Expected:**
+```
+✅ Alt text généré mentionne les couleurs
+✅ Respecte la contrainte 100 chars max
+```
+
+### Test 7 : Prompt Personnalisé Mode 2
+**Input:** PPTX avec image  
+**Option:** `image_text_description=True, output_images=False, llm_client=..., llm_prompt="Technical description"`  
+**Expected:**
+```
+✅ Description technique détaillée
+✅ Bloc image-description présent
+✅ Max 10 lignes respecté
+```
+
+### Test 8 : Erreur LLM (Fallback)
+**Input:** PPTX avec image  
+**Option:** `image_text_description=True, output_images=True, llm_client=invalid`  
+**Expected:**
+```
+✅ Exception capturée
+✅ Mode 1 : image affichée avec shape.name
+✅ Mode 2 : texte simple **Image:** shapename
+✅ Pas de crash
+```
 
 ---
 
 ## 📋 Plan d'Implémentation
 
-### Sprint 1 : Détection Charts (1.5h)
-- [ ] Ajouter détection `shape.has_chart` dans `get_shape_content()`
-- [ ] Tester détection sur différents types de charts
-- [ ] Vérifier interaction avec `_is_picture()`
+### Sprint 1 : Logique Adaptative (2h)
+- [ ] Ajouter détection mode via `output_images`
+- [ ] Implémenter branche conditionnelle Mode 1 vs Mode 2
+- [ ] Gérer récupération alt text existant (PowerPoint)
+- [ ] Tester détection sur différents types d'images
 
-### Sprint 2 : Génération Description (3h)
-- [ ] Implémenter prompt LLM contextuel
-- [ ] Appeler `llm_caption()` avec prompt chart-specific
-- [ ] Générer bloc ```chart-description
-- [ ] Remplacer affichage image par bloc texte
-- [ ] Tests génération (Use Case 1)
+### Sprint 2 : Mode 1 - Alt Text Enrichi (2h)
+- [ ] Implémenter prompt court (100 chars)
+- [ ] Appeler `llm_caption()` SEULEMENT si alt text absent/vide
+- [ ] Nettoyer résultat LLM (newlines, limite chars)
+- [ ] Générer syntaxe markdown avec alt text enrichi
+- [ ] Tests 1, 3, 6, 8 validés
 
-### Sprint 3 : Fallbacks & Tests (1.5h)
-- [ ] Implémenter fallback sans LLM (Use Case 2)
-- [ ] Implémenter fallback erreur LLM (Test 5)
-- [ ] Tests 1-6 validés
-- [ ] Vérifier mix images/charts (Test 3)
-- [ ] Edge cases
+### Sprint 3 : Mode 2 - Description Complète (2h)
+- [ ] Implémenter prompt long (titre + 10 lignes)
+- [ ] Appeler `llm_caption()` pour toutes les images
+- [ ] Générer blocs ```image-description
+- [ ] Gérer fallback sans LLM (texte simple)
+- [ ] Tests 2, 4, 7 validés
 
-**Estimation Totale:** 6h
+### Sprint 4 : Fallbacks & Tests Finaux (2h)
+- [ ] Implémenter fallback sans LLM pour les deux modes
+- [ ] Implémenter fallback erreur LLM (Test 8)
+- [ ] Vérifier exclusion des charts (Test 5)
+- [ ] Tous tests 1-8 passent
+- [ ] Edge cases et régression BRIEF_01
+
+**Estimation Totale:** 8h
 
 ---
 
 ## ✅ Conditions d'Acceptation
 
-- [ ] Charts détectés via `shape.has_chart`
-- [ ] LLM génère description contextuelle (titre + max 10 lignes)
-- [ ] Bloc ```chart-description dans Markdown
-- [ ] Image sauvegardée mais NON affichée
-- [ ] Fallback : affiche image si LLM absent
-- [ ] Fallback : affiche image si erreur LLM
+### Mode 1 : Alt Text Enrichi (output_images=True)
+- [ ] Alt text existant PowerPoint préservé (pas de génération LLM)
+- [ ] Alt text absent → génération LLM (1 phrase, max 100 chars)
+- [ ] Images sauvegardées et affichées : `![alt text](images/...)`
+- [ ] Prompt court spécifique au mode 1
+
+### Mode 2 : Description Complète (output_images=False)
+- [ ] Blocs ```image-description générés pour toutes les images
+- [ ] Descriptions contiennent titre + max 10 lignes
+- [ ] Aucun fichier image créé
+- [ ] Prompt long spécifique au mode 2
+
+### Comportements Communs
+- [ ] Charts exclus (`shape.has_chart == True`)
+- [ ] Fallback Mode 1 sans LLM : shape.name comme alt text
+- [ ] Fallback Mode 2 sans LLM : texte simple `**Image:** shapename`
+- [ ] Fallback erreur LLM : comportements par défaut
 - [ ] Prompt personnalisable via `llm_prompt`
-- [ ] Mix images normales + charts fonctionne
-- [ ] Tests 1-6 passent tous
+- [ ] Tests 1-8 passent tous
 - [ ] BRIEF_01 non affecté (régression test)
 
 ---
@@ -455,7 +589,7 @@ OU
 
 ## ⚠️ Intégration MCP - CRITIQUE POUR EFFICACITÉ
 
-**Important :** Les descriptions LLM ne servent que si le MCP peut lire les images du bon endroit et les envoyer au bon LLM.
+**Important :** Les descriptions LLM adaptatives nécessitent une intégration MCP correcte pour gérer les deux modes.
 
 ### Le Problème de Base
 
@@ -463,7 +597,8 @@ OU
 
 **Problème supplémentaire pour BRIEF_02 :**
 - Le LLM choisi doit être accessible via le MCP
-- Les images doivent être encodées en base64 ou uploadées
+- Mode 1 : Alt text LLM uniquement si absent (nécessite vérification)
+- Mode 2 : Descriptions complètes pour toutes les images
 - Les clés API doivent être disponibles dans l'environnement MCP
 
 ### Solution - Étendre le MCP
@@ -480,16 +615,22 @@ async def convert_to_markdown(
     skip_icon_images: bool = True,
     deduplicate_images: bool = False,
     # BRIEF_02 new params:
-    add_image_descriptions: bool = True,
-    image_description_model: str = "gpt-4-vision",
-    image_description_detail: str = "high",
+    image_text_description: bool = False,           # ← NEW (opt-in)
+    llm_model: str = "gpt-4o",                      # ← NEW
+    llm_prompt: str = None,                         # ← NEW (custom prompt)
 ) -> str:
-    """Convert resource with LLM image descriptions.
+    """Convert resource with adaptive LLM image descriptions.
     
     Args:
-        add_image_descriptions: Generate text descriptions (default: True)
-        image_description_model: LLM model for descriptions
-        image_description_detail: Detail level for LLM analysis
+        image_text_description: Enable LLM descriptions (default: False)
+        llm_model: LLM model for descriptions
+        llm_prompt: Custom prompt override
+        
+    Behavior:
+        - output_images=True + image_text_description=True:
+          Enrich missing alt text with 1 phrase (max 100 chars)
+        - output_images=False + image_text_description=True:
+          Generate full description blocks (title + 10 lines)
     """
     kwargs = {
         "output_images": output_images,
@@ -497,10 +638,12 @@ async def convert_to_markdown(
         "skip_background_images": skip_background_images,
         "skip_icon_images": skip_icon_images,
         "deduplicate_images": deduplicate_images,
-        "add_image_descriptions": add_image_descriptions,
-        "image_description_model": image_description_model,
-        "image_description_detail": image_description_detail,
+        "image_text_description": image_text_description,
+        "llm_model": llm_model,
+        "llm_prompt": llm_prompt,
     }
+    
+    # llm_client configured at server level (API keys)
     return MarkItDown().convert_uri(uri, **kwargs).markdown
 ```
 
@@ -511,12 +654,18 @@ async def convert_to_markdown(
 - Répertoire source détecté depuis file:// URI
 - Agent workflow seamless sans scripts manuels
 
-**Tester que :**
+**Tester Mode 1 (Alt Text Enrichi) :**
 1. ✅ Images extraites au bon endroit (BRIEF_01 - RÉSOLU)
-2. ✅ Images traitées par le LLM sans erreurs
-3. ✅ Descriptions envoyées via l'API du modèle configuré
-4. ✅ Blocs ```image-description présents dans le Markdown
-5. ✅ Performance acceptable (ne pas surcharger LLM)
+2. ✅ Alt text existants PowerPoint préservés
+3. ✅ Alt text absents → génération LLM (max 100 chars)
+4. ✅ Images affichées avec alt text enrichi
+5. ✅ Performance acceptable (LLM appelé uniquement si nécessaire)
+
+**Tester Mode 2 (Description Complète) :**
+1. ✅ Aucun fichier image créé
+2. ✅ Blocs ```image-description présents
+3. ✅ Descriptions contiennent titre + 10 lignes max
+4. ✅ Performance acceptable (1 appel LLM par image)
 
 **Sans cette correction, agents devront configurer LLM manuellement !**
 
@@ -541,20 +690,20 @@ async def convert_to_markdown(
     skip_background_images: bool = True,
     skip_icon_images: bool = True,
     deduplicate_images: bool = False,
-    add_image_descriptions: bool = True,           # ← NEW
-    image_description_model: str = "gpt-4-vision", # ← NEW
-    image_description_detail: str = "high",        # ← NEW
+    image_text_description: bool = False,  # ← NEW (opt-in)
+    llm_model: str = "gpt-4o",             # ← NEW
+    llm_prompt: str = None,                # ← NEW
 ) -> str:
-    """Convert resource to markdown with LLM image descriptions."""
+    """Convert resource to markdown with adaptive LLM image descriptions."""
     kwargs = {
         "output_images": output_images,
         "image_dir": image_dir,
         "skip_background_images": skip_background_images,
         "skip_icon_images": skip_icon_images,
         "deduplicate_images": deduplicate_images,
-        "add_image_descriptions": add_image_descriptions,
-        "image_description_model": image_description_model,
-        "image_description_detail": image_description_detail,
+        "image_text_description": image_text_description,
+        "llm_model": llm_model,
+        "llm_prompt": llm_prompt,
     }
     return MarkItDown().convert_uri(uri, **kwargs).markdown
 ```
@@ -565,12 +714,16 @@ async def convert_to_markdown(
 # Reinstall MCP
 pip install -e packages/markitdown-mcp
 
-# Test with descriptions
-@markitdown-ia Convert file:///C:/Repos/test/document.pptx add_image_descriptions=true
+# Test Mode 1 (alt text enrichment)
+@markitdown-ia Convert file:///C:/test/doc.pptx image_text_description=true output_images=true
+
+# Test Mode 2 (full descriptions)
+@markitdown-ia Convert file:///C:/test/doc.pptx image_text_description=true output_images=false
 
 # Verify:
-# - Images in correct directory
-# - image-description blocks present
+# - Mode 1: Images with enriched alt text
+# - Mode 2: image-description blocks present
+# - Charts excluded (shape.has_chart)
 # - LLM calls successful
 ```
 
@@ -589,20 +742,25 @@ pip install -e packages/markitdown-mcp
 
 ## 🎯 Questions Ouvertes
 
-1. **Interaction `chart_text_description` + `keep_data_uris`** :
-   - Option A : `chart_text_description` prioritaire (génère bloc texte)
-   - Option B : `keep_data_uris` prioritaire (génère base64)
-   - **Recommandation:** Option A (cohérent avec objectif BRIEF_02)
+1. **Interaction Mode 1 + `keep_data_uris`** :
+   - Option A : Ignorer `keep_data_uris` si `image_text_description=True` (extraction prioritaire)
+   - Option B : Respecter `keep_data_uris` (base64 + alt text enrichi)
+   - **Recommandation:** Option A (cohérent avec logique Mode 1)
 
-2. **Format du bloc** :
-   - Actuel : ```chart-description
-   - Alternative : ```image-description (réutiliser format BRIEF_01 LLM)
-   - **Recommandation:** Garder ```chart-description (distingue charts vs images)
+2. **Mode 2 avec Charts** :
+   - Actuel : Charts exclus (gérés dans BRIEF_03)
+   - Alternative : Mode 2 génère aussi descriptions pour charts
+   - **Recommandation:** Garder exclusion (évite duplication avec BRIEF_03)
 
-3. **Limite 10 lignes** :
+3. **Limite 10 lignes Mode 2** :
    - Hardcodé dans prompt
    - Alternative : paramètre `max_description_lines`
    - **Recommandation:** Hardcodé pour simplicité Tier 1
+
+4. **Limite 100 chars Mode 1** :
+   - Hardcodé dans code (`.strip()[:100]`)
+   - Alternative : paramètre `max_alt_text_length`
+   - **Recommandation:** Hardcodé (standard accessibilité ~100-125 chars)
 
 ---
 
