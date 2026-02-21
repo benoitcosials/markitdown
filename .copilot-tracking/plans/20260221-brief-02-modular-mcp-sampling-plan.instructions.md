@@ -129,10 +129,10 @@ packages/markitdown-mcp/src/markitdown_mcp/
 
 **Objectif** : Implémenter délégation analyse d'images au LLM client via MCP Sampling.
 
-### Sprint 2.1 : Créer Module Vision Enhancement - Infrastructure (1h)
+### Sprint 2.1 : Créer Module Vision Enhancement - Infrastructure (1h) - ✅ COMPLÉTÉ
 
-- [ ] **2.1.1** Créer fichier `packages/markitdown-mcp/src/markitdown_mcp/vision_enhancement.py`
-- [ ] **2.1.2** Ajouter imports MCP types :
+- [x] **2.1.1** Créer fichier `packages/markitdown-mcp/src/markitdown_mcp/vision_enhancement.py`
+- [x] **2.1.2** Ajouter imports MCP types :
   ```python
   from mcp.server import Server
   from mcp.types import (
@@ -143,80 +143,80 @@ packages/markitdown-mcp/src/markitdown_mcp/
       ImageContent,
   )
   ```
-- [ ] **2.1.3** Ajouter imports standard (base64, re, imghdr, Optional, Path)
-- [ ] **2.1.4** Header module `# --- MODULE: Vision Enhancement via MCP Sampling (BRIEF_02) ---`
-- [ ] **2.1.5** Implémenter `async def enhance_markdown_with_client_vision(markdown, server, output_images)` :
-  - [ ] Check sampling support avec `await client_supports_sampling(server)`
-  - [ ] Return markdown as-is si sampling non supporté
-  - [ ] If output_images → appeler `_enhance_alt_texts()`
-  - [ ] Else → appeler `_generate_description_blocks()`
-  - [ ] Docstring complète avec args/returns
-  - [ ] Type hints complets
-- [ ] **2.1.6** Implémenter `async def client_supports_sampling(server)` :
-  - [ ] Try/except autour de `server.get_client_capabilities()`
-  - [ ] Return `caps.get("sampling", False)`
-  - [ ] Fallback False en cas d'erreur
-  - [ ] Docstring
+- [x] **2.1.3** Ajouter imports standard (base64, re, imghdr, Optional, Path)
+- [x] **2.1.4** Header module `# --- MODULE: Vision Enhancement via MCP Sampling (BRIEF_02) ---`
+- [x] **2.1.5** Implémenter `async def enhance_markdown_with_client_vision(markdown, server, output_images)` :
+  - [x] Check sampling support avec `await client_supports_sampling(server)`
+  - [x] Return markdown as-is si sampling non supporté
+  - [x] If output_images → appeler `_enhance_alt_texts()`
+  - [x] Else → appeler `_generate_description_blocks()`
+  - [x] Docstring complète avec args/returns
+  - [x] Type hints complets
+- [x] **2.1.6** Implémenter `async def client_supports_sampling(server)` :
+  - [x] Try/except autour de `server.get_client_capabilities()`
+  - [x] Return `caps.get("sampling", False)`
+  - [x] Fallback False en cas d'erreur
+  - [x] Docstring
 
-### Sprint 2.2 : Helpers et Parsers (30 min)
+### Sprint 2.2 : Helpers et Parsers (30 min) - ✅ COMPLÉTÉ
 
-- [ ] **2.2.1** Implémenter `def parse_markdown_images(markdown)` :
-  - [ ] Regex pattern `r'!\[(.*?)\]\((.*?)\)'`
-  - [ ] `re.findall(pattern, markdown)`
-  - [ ] Return list[tuple[str, str]] (alt_text, image_path)
-  - [ ] Docstring avec exemple
-- [ ] **2.2.2** Implémenter `def read_image_file(image_path)` :
-  - [ ] Try/except FileNotFoundError
-  - [ ] Return bytes ou None
-  - [ ] Docstring
-- [ ] **2.2.3** Implémenter `def detect_image_mime_type(image_data)` :
-  - [ ] Utiliser `imghdr.what(None, h=image_data)`
-  - [ ] Return `f"image/{image_type or 'png'}"`
-  - [ ] Docstring
+- [x] **2.2.1** Implémenter `def parse_markdown_images(markdown)` :
+  - [x] Regex pattern `r'!\[(.*?)\]\((.*?)\)'`
+  - [x] `re.findall(pattern, markdown)`
+  - [x] Return list[tuple[str, str]] (alt_text, image_path)
+  - [x] Docstring avec exemple
+- [x] **2.2.2** Implémenter `def read_image_file(image_path)` :
+  - [x] Try/except FileNotFoundError
+  - [x] Return bytes ou None
+  - [x] Docstring
+- [x] **2.2.3** Implémenter `def detect_image_mime_type(image_data)` :
+  - [x] Utiliser `imghdr.what(None, h=image_data)`
+  - [x] Return `f"image/{image_type or 'png'}"`
+  - [x] Docstring
 
-### Sprint 2.3 : MCP Sampling Core (1h)
+### Sprint 2.3 : MCP Sampling Core (1h) - ✅ COMPLÉTÉ
 
-- [ ] **2.3.1** Implémenter `async def request_client_image_analysis(server, image_data, prompt, max_tokens)` :
-  - [ ] Détecter MIME type avec `detect_image_mime_type()`
-  - [ ] Encoder base64 : `base64.b64encode(image_data).decode('utf-8')`
-  - [ ] Créer `CreateMessageRequest` :
-    - [ ] messages = [SamplingMessage(...)]
-    - [ ] content = [TextContent(prompt), ImageContent(base64, mimeType)]
-    - [ ] maxTokens = max_tokens
-    - [ ] systemPrompt = "You are analyzing images from a PowerPoint presentation."
-  - [ ] Try/except autour de `await server.request_sampling(request)`
-  - [ ] Return `result.content.text.strip()[:max_tokens]`
-  - [ ] Return None en cas d'erreur (fallback gracieux)
-  - [ ] Docstring complète avec conformité MCP 2024-11-05
-  - [ ] Type hints Optional[str]
+- [x] **2.3.1** Implémenter `async def request_client_image_analysis(server, image_data, prompt, max_tokens)` :
+  - [x] Détecter MIME type avec `detect_image_mime_type()`
+  - [x] Encoder base64 : `base64.b64encode(image_data).decode('utf-8')`
+  - [x] Créer `CreateMessageRequest` :
+    - [x] messages = [SamplingMessage(...)]
+    - [x] content = [TextContent(prompt), ImageContent(base64, mimeType)]
+    - [x] maxTokens = max_tokens
+    - [x] systemPrompt = "You are analyzing images from a PowerPoint presentation."
+  - [x] Try/except autour de `await server.request_sampling(request)`
+  - [x] Return `result.content.text.strip()[:max_tokens]`
+  - [x] Return None en cas d'erreur (fallback gracieux)
+  - [x] Docstring complète avec conformité MCP 2024-11-05
+  - [x] Type hints Optional[str]
 
-### Sprint 2.4 : Mode 1 - Alt Text Enrichi (1h)
+### Sprint 2.4 : Mode 1 - Alt Text Enrichi (1h) - ✅ COMPLÉTÉ
 
-- [ ] **2.4.1** Implémenter `async def _enhance_alt_texts(markdown, server)` :
-  - [ ] Parser images avec `parse_markdown_images(markdown)`
-  - [ ] Boucle sur images
-  - [ ] Skip si alt_text existe et non vide (`if alt_text and alt_text.strip()`)
-  - [ ] Lire image avec `read_image_file(image_path)`
-  - [ ] Skip si lecture échoue
-  - [ ] Définir prompt court :
+- [x] **2.4.1** Implémenter `async def _enhance_alt_texts(markdown, server)` :
+  - [x] Parser images avec `parse_markdown_images(markdown)`
+  - [x] Boucle sur images
+  - [x] Skip si alt_text existe et non vide (`if alt_text and alt_text.strip()`)
+  - [x] Lire image avec `read_image_file(image_path)`
+  - [x] Skip si lecture échoue
+  - [x] Définir prompt court :
     ```python
     prompt = "Describe this PowerPoint image in 1 concise phrase (max 100 characters):"
     ```
-  - [ ] Appeler `await request_client_image_analysis(server, image_data, prompt, max_tokens=100)`
-  - [ ] Si description reçue :
-    - [ ] `markdown = markdown.replace(f'![{alt_text}]({image_path})', f'![{description}]({image_path})')`
-  - [ ] Return markdown enrichi
-  - [ ] Docstring Mode 1 spécifique
-  - [ ] Type hints
+  - [x] Appeler `await request_client_image_analysis(server, image_data, prompt, max_tokens=100)`
+  - [x] Si description reçue :
+    - [x] `markdown = markdown.replace(f'![{alt_text}]({image_path})', f'![{description}]({image_path})')`
+  - [x] Return markdown enrichi
+  - [x] Docstring Mode 1 spécifique
+  - [x] Type hints
 
-### Sprint 2.5 : Mode 2 - Description Blocks (1h 30)
+### Sprint 2.5 : Mode 2 - Description Blocks (1h 30) - ✅ COMPLÉTÉ
 
-- [ ] **2.5.1** Implémenter `async def _generate_description_blocks(markdown, server)` :
-  - [ ] Parser images avec `parse_markdown_images(markdown)`
-  - [ ] Boucle sur TOUTES les images (pas de filter)
-  - [ ] Lire image avec `read_image_file(image_path)`
-  - [ ] Skip si lecture échoue
-  - [ ] Définir prompt détaillé :
+- [x] **2.5.1** Implémenter `async def _generate_description_blocks(markdown, server)` :
+  - [x] Parser images avec `parse_markdown_images(markdown)`
+  - [x] Boucle sur TOUTES les images (pas de filter)
+  - [x] Lire image avec `read_image_file(image_path)`
+  - [x] Skip si lecture échoue
+  - [x] Définir prompt détaillé :
     ```python
     prompt = """Analyze this PowerPoint image and provide:
     1. A descriptive title (1 line)
@@ -226,25 +226,25 @@ packages/markitdown-mcp/src/markitdown_mcp/
        - Context/purpose
        - Notable details"""
     ```
-  - [ ] Appeler `await request_client_image_analysis(server, image_data, prompt, max_tokens=500)`
-  - [ ] Si description reçue :
-    - [ ] Formater en bloc :
+  - [x] Appeler `await request_client_image_analysis(server, image_data, prompt, max_tokens=500)`
+  - [x] Si description reçue :
+    - [x] Formater en bloc :
       ```python
       block = f"\n```image-description\n{description}\n```\n"
       ```
-    - [ ] Remplacer `![{alt_text}]({image_path})` par bloc
-  - [ ] Return markdown avec blocs
-  - [ ] Docstring Mode 2 spécifique
-  - [ ] Type hints
+    - [x] Remplacer `![{alt_text}]({image_path})` par bloc
+  - [x] Return markdown avec blocs
+  - [x] Docstring Mode 2 spécifique
+  - [x] Type hints
 
-### Sprint 2.6 : Intégration dans Tools (30 min)
+### Sprint 2.6 : Intégration dans Tools (30 min) - ✅ COMPLÉTÉ
 
-- [ ] **2.6.1** Éditer `packages/markitdown-mcp/src/markitdown_mcp/tools.py`
-- [ ] **2.6.2** Ajouter import :
+- [x] **2.6.1** Éditer `packages/markitdown-mcp/src/markitdown_mcp/tools.py`
+- [x] **2.6.2** Ajouter import :
   ```python
   from .vision_enhancement import enhance_markdown_with_client_vision
   ```
-- [ ] **2.6.3** Décommenter et activer le code vision :
+- [x] **2.6.3** Décommenter et activer le code vision :
   ```python
   # BRIEF_02: Enhance with client vision if requested
   if use_client_vision:
@@ -254,8 +254,8 @@ packages/markitdown-mcp/src/markitdown_mcp/
           output_images=output_images
       )
   ```
-- [ ] **2.6.4** Vérifier que `convert_to_markdown()` est async
-- [ ] **2.6.5** Utiliser `get_errors` pour vérifier imports et syntax
+- [x] **2.6.4** Vérifier que `convert_to_markdown()` est async
+- [x] **2.6.5** Utiliser `get_errors` pour vérifier imports et syntax
 
 ### Sprint 2.7 : Tests VS Code + GitHub Copilot (1h)
 

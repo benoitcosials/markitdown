@@ -10,6 +10,7 @@ from markitdown import MarkItDown
 from mcp.server.fastmcp import FastMCP
 
 from .utils import check_plugins_enabled, resolve_image_dir_for_file_uri
+from .vision_enhancement import enhance_markdown_with_client_vision
 
 # Initialize FastMCP server instance
 mcp = FastMCP("markitdown")
@@ -78,17 +79,15 @@ async def convert_to_markdown(
     result = converter.convert_uri(uri, **kwargs)
     markdown = result.markdown
     
-    # Step 5: Vision enhancement (BRIEF_02 - will be implemented in Phase 2)
-    # BRIEF_02: Vision enhancement will be added in Phase 2
-    # When implemented, this will delegate image analysis to the calling LLM client
-    # via MCP sampling capability (MCP Protocol 2024-11-05)
-    # if use_client_vision:
-    #     from .vision_enhancement import enhance_markdown_with_client_vision
-    #     markdown = await enhance_markdown_with_client_vision(
-    #         markdown=markdown,
-    #         server=mcp._mcp_server,
-    #         output_images=output_images
-    #     )
+    # Step 5: Vision enhancement (BRIEF_02)
+    # Delegate image analysis to calling LLM client via MCP sampling
+    # (MCP Protocol 2024-11-05 - sampling/createMessage capability)
+    if use_client_vision:
+        markdown = await enhance_markdown_with_client_vision(
+            markdown=markdown,
+            server=mcp._mcp_server,
+            output_images=output_images
+        )
     
     # Step 6: Return final markdown
     return markdown
