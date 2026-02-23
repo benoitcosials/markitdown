@@ -9,12 +9,12 @@ Ce ROADMAP est le **document maître** organisant les améliorations du converti
 | 0 | Extraction et Sauvegarde Images | [BRIEF_01_IMAGE_EXTRACTION.md](BRIEF_01_IMAGE_EXTRACTION.md) | ✅ Terminé | 🔴 CRITIQUE |
 | 6a | Descriptions Textuelles LLM (Images) | [BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md](BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md) | 🚧 En Cours | 🟡 MOYENNE |
 | 6b | ASCII Art pour Charts Statistiques | [BRIEF_03_CHART_ASCII_ART.md](BRIEF_03_CHART_ASCII_ART.md) | 📝 Documenté | 🟡 MOYENNE |
+| 7 | Extraction et Conversion SmartArt | [BRIEF_05_SMARTART_EXTRACTION.md](BRIEF_05_SMARTART_EXTRACTION.md) | 🔬 Recherche Complétée | 🟠 HAUTE |
 | 1 | Listes à Puces Structurées | — | ⏳ À documenter | ⭐⭐⭐ |
 | 2 | Formatage Texte Riche | — | ⏳ À documenter | ⭐⭐⭐ |
 | 3 | Hyperlinks | — | ⏳ À documenter | ⭐⭐⭐ |
 | 4 | Formes de Texte (Callouts) | — | ⏳ À documenter | ⭐⭐⭐ |
 | 5 | Tableaux Avancés | — | ⏳ À documenter | ⭐⭐ |
-| 7 | SmartArt | — | ⏳ À documenter | ⭐⭐ |
 | 8 | Métadonnées Slides | — | ⏳ À documenter | ⭐⭐ |
 | 9 | Audio/Vidéo Embedded | — | ⏳ À documenter | ⭐ |
 | 10 | Hiérarchie Visuelle | — | ⏳ À documenter | ⭐ |
@@ -213,12 +213,27 @@ md_content += f"\n![{alt_text}](data:{content_type};base64,{b64_string})\n"
   - `llm_prompt` personnalisable
 - **Voir:** [BRIEF_02_CHART_DESCRIPTIONS.md](BRIEF_02_CHART_DESCRIPTIONS.md) pour spécifications complètes
 
-#### 7. Support des Diagrammes SmartArt
-- **Impact**: Représentation de hierarchies/processus
-- **Complexité**: Haute
-- **Implémentation**:
-  - Extraire structures SmartArt
-  - Générer listes/arbres texte avec indentation
+#### 7. Support des Diagrammes SmartArt → [BRIEF_05](BRIEF_05_SMARTART_EXTRACTION.md)
+- **Impact**: Représentation de hiérarchies/processus - Données structurées perdues actuellement
+- **Complexité**: Modérée-Haute
+- **Statut**: 🔬 **Recherche complétée - Prêt pour implémentation**
+- **Estimation**: 10h (Recherche: 1h ✅ + Implémentation: 7h + Tests: 2h)
+- **Fonctionnalités**:
+  - ✅ Détection SmartArt via XML URI (python-pptx n'a pas d'API native)
+  - ✅ Extraction texte via ZIP + lxml parsing de `ppt/diagrams/data{N}.xml`
+  - ✅ Conversion liste Markdown plate (MVP)
+  - ⚠️ Reconstruction hiérarchie complète (Phase 2 - algorithme tri topologique)
+  - ❌ Extraction images SmartArt complet (vectoriel non convertible)
+  - ✅ Support images embarquées dans SmartArt via `<a:blip>` (conditionnel)
+- **Paramètres**:
+  - `extract_smartart=True` (défaut)
+  - `smartart_format="auto"` (détection automatique texte vs images)
+- **Limitations Identifiées**:
+  - ⚠️ python-pptx: Aucun support SmartArt natif (parsing XML manuel requis)
+  - ❌ SmartArt vectoriels : Pas de PNG extractible (rendu PowerPoint dynamique)
+  - ⚠️ Hiérarchie complexe : Algorithme graphe requis pour reconstruction complète
+- **Voir:** [BRIEF_05_SMARTART_EXTRACTION.md](BRIEF_05_SMARTART_EXTRACTION.md) pour spécifications complètes et résultats de recherche
+
 
 #### 8. Métadonnées des Slides
 - **Impact**: Contexte et indexation
@@ -266,7 +281,7 @@ md_content += f"\n![{alt_text}](data:{content_type};base64,{b64_string})\n"
 
 ### Phase 3 : Premium (Semaine 5+)
 5. **Tableaux avancés** → Cellules fusionnées (à documenter)
-7. **SmartArt** → Diagrammes (à documenter)
+7. **SmartArt** → Diagrammes → [BRIEF_05](BRIEF_05_SMARTART_EXTRACTION.md) (10h - Recherche ✅ complétée)
 8. **Métadonnées** → Indexation/contexte (à documenter)
 9. **Multimédia** → Contenu riche (à documenter)
 
