@@ -8,7 +8,7 @@ import sys
 import unicodedata
 import zipfile
 from pathlib import Path
-from typing import Any, BinaryIO, List, Optional
+from typing import Any, BinaryIO, Callable, List, Optional
 from urllib.parse import quote
 
 # Try loading lxml for SmartArt extraction (BRIEF_05)
@@ -274,23 +274,42 @@ class PptxConverter(DocumentConverter):
                     )
                     
                     if diagram_path:
-                        # Extract text nodes
-                        texts = self._extract_smartart_text(
+                        # Extract text nodes and image associations
+                        texts, node_images = self._extract_smartart_text(
                             file_stream, diagram_path
                         )
                         
-                        # Extract embedded images (if present and enabled)
-                        images = self._extract_smartart_images(
-                            file_stream,
-                            diagram_path,
-                            slide_num,
-                            smartart_count,
-                            kwargs,
-                        )
+                        # Initialize outputs
+                        saved_images = {}  # node_id -> saved_path
+                        image_descriptions = {}  # node_id -> description
+                        
+                        if node_images:
+                            if kwargs.get('output_images'):
+                                # Mode: Save images to disk
+                                saved_images = self._save_smartart_images(
+                                    file_stream,
+                                    diagram_path,
+                                    node_images,
+                                    slide_num,
+                                    smartart_count,
+                                    kwargs,
+                                )
+                            else:
+                                # Mode: Text-only - generate descriptions
+                                image_descriptions = self._describe_smartart_images(
+                                    file_stream,
+                                    diagram_path,
+                                    node_images,
+                                    kwargs,
+                                )
                         
                         # Convert to Markdown
                         smartart_md = self._convert_smartart_to_markdown(
-                            texts, images, smartart_count, slide_num
+                            texts,
+                            saved_images,
+                            smartart_count,
+                            slide_num,
+                            image_descriptions,
                         )
                         
                         if smartart_md:
@@ -533,21 +552,25 @@ class PptxConverter(DocumentConverter):
 
     def _extract_smartart_text(
         self, pptx_stream: BinaryIO, diagram_path: str
-    ) -> List[tuple[str, int]]:
+    ) -> tuple[List[tuple[str, int, str]], dict[str, str]]:
         """
-        Extract text nodes from SmartArt with hierarchy levels.
+        Extract text nodes from SmartArt with hierarchy and image associations.
         
-        Reads data{N}.xml, extracts <dgm:pt> nodes, and determines hierarchy
-        using <dgm:cxn> connections with srcOrd for ordering.
+        Reads data{N}.xml, extracts <dgm:pt> nodes, determines hierarchy
+        using <dgm:cxn> connections with srcOrd for ordering, and links
+        images from PRES nodes to DATA nodes via presAssocID.
         
         Args:
             pptx_stream: PPTX file as binary stream
             diagram_path: Path within ZIP like "ppt/diagrams/data1.xml"
             
         Returns:
-            List of tuples (text, level) where level is indentation depth (0-based)
+            Tuple of:
+              - List of tuples (text, level, node_id) for hierarchy with IDs
+              - Dict mapping node_id -> image_rid for nodes with images
         """
         nodes_with_text = []
+        node_images = {}  # node_id -> rId for image
         
         try:
             pptx_stream.seek(0)
@@ -565,12 +588,17 @@ class PptxConverter(DocumentConverter):
                         'http://schemas.openxmlformats.org/'
                         'drawingml/2006/main'
                     ),
+                    'r': (
+                        'http://schemas.openxmlformats.org/'
+                        'officeDocument/2006/relationships'
+                    ),
                 }
                 
-                # Extract point types and text
+                # Extract point types, text, and images
                 points = root.findall('.//dgm:pt', namespaces=ns)
                 node_texts = {}  # modelId -> text
                 node_types = {}  # modelId -> type (doc, parTrans, sibTrans, pres)
+                data_node_ids = set()  # All DATA node IDs
                 doc_node_id = None
                 
                 for pt in points:
@@ -586,12 +614,43 @@ class PptxConverter(DocumentConverter):
                     
                     # Extract text (only for data nodes)
                     if pt_type in (None, 'node'):  # Normal data nodes
+                        data_node_ids.add(model_id)
                         text_parts = []
                         for text_elem in pt.findall('.//a:t', namespaces=ns):
                             if text_elem.text:
                                 text_parts.append(text_elem.text.strip())
                         if text_parts:
                             node_texts[model_id] = ' '.join(text_parts)
+                    
+                    # Extract images from PRES nodes via presAssocID
+                    if pt_type == 'pres':
+                        prset = pt.find('.//dgm:prSet', namespaces=ns)
+                        if prset is not None:
+                            pres_assoc = prset.get('presAssocID')
+                            if pres_assoc and pres_assoc in data_node_ids:
+                                # Look for embedded image
+                                blip = pt.find('.//a:blip', namespaces=ns)
+                                if blip is not None:
+                                    r_embed = f'{{{ns["r"]}}}embed'
+                                    r_id = blip.get(r_embed)
+                                    if r_id:
+                                        node_images[pres_assoc] = r_id
+                
+                # Second pass for PRES nodes (data nodes may come before)
+                for pt in points:
+                    pt_type = pt.get('type')
+                    if pt_type == 'pres':
+                        prset = pt.find('.//dgm:prSet', namespaces=ns)
+                        if prset is not None:
+                            pres_assoc = prset.get('presAssocID')
+                            if pres_assoc and pres_assoc in data_node_ids:
+                                if pres_assoc not in node_images:
+                                    blip = pt.find('.//a:blip', namespaces=ns)
+                                    if blip is not None:
+                                        r_embed = f'{{{ns["r"]}}}embed'
+                                        r_id = blip.get(r_embed)
+                                        if r_id:
+                                            node_images[pres_assoc] = r_id
                 
                 # Build children map: parent_id -> [(srcOrd, child_id), ...]
                 connections = root.findall('.//dgm:cxn', namespaces=ns)
@@ -623,12 +682,18 @@ class PptxConverter(DocumentConverter):
                 for parent_id in children_map:
                     children_map[parent_id].sort(key=lambda x: x[0])
                 
+                # Track current node ID for image association
+                node_order = []  # [(node_id, text, level), ...]
+                
                 # Traverse tree recursively starting from doc node
                 def traverse(node_id: str, level: int):
                     """Traverse tree, collecting text nodes with levels."""
-                    # Add this node if it has text
+                    # Add this node if it has text (or empty for image-only)
                     if node_id in node_texts:
-                        nodes_with_text.append((node_texts[node_id], level))
+                        node_order.append((node_id, node_texts[node_id], level))
+                    elif node_id in node_images:
+                        # Node has image but no text - add with empty text
+                        node_order.append((node_id, '', level))
                     
                     # Process children in order
                     if node_id in children_map:
@@ -643,12 +708,16 @@ class PptxConverter(DocumentConverter):
                     # Fallback: no doc node, use text-based heuristic
                     for model_id, text in node_texts.items():
                         level = self._infer_level_from_text(text)
-                        nodes_with_text.append((text, level))
+                        node_order.append((model_id, text, level))
+                
+                # Convert to output format (text, level, node_id)
+                for node_id, text, level in node_order:
+                    nodes_with_text.append((text, level, node_id))
             
         except Exception:
             pass
         
-        return nodes_with_text
+        return nodes_with_text, node_images
 
     def _infer_level_from_text(self, text: str) -> int:
         """Infer hierarchy level from text patterns (fallback)."""
@@ -658,66 +727,231 @@ class PptxConverter(DocumentConverter):
             return match.group(0).count('.')
         return 0
 
-    def _extract_smartart_images(
+    # --- MODULE: Image Description Cascade (BRIEF_02) ---
+    def _describe_image(
+        self,
+        image_bytes: bytes,
+        content_type: str | None,
+        filename: str | None,
+        kwargs: dict,
+    ) -> str:
+        """
+        Generate image description using cascade: llm_callback → llm_caption → PIL.
+        
+        Cascade Priority:
+        1. llm_callback: MCP sampling via client (async converted to sync)
+        2. llm_caption: Direct OpenAI/Azure API call
+        3. PIL: Basic analysis (dimensions, format, dominant color)
+        
+        Args:
+            image_bytes: Raw image data
+            content_type: MIME type (e.g., 'image/png')
+            filename: Original filename (may be None)
+            kwargs: Converter options (llm_callback, llm_client, llm_model, llm_prompt)
+        
+        Returns:
+            Description string (never empty - PIL fallback always works)
+        """
+        # Try 1: llm_callback (MCP sampling)
+        llm_callback = kwargs.get('llm_callback')
+        if llm_callback is not None:
+            try:
+                prompt = kwargs.get('llm_prompt') or (
+                    "Describe this image briefly: object type, colors, style."
+                )
+                description = llm_callback(image_bytes, prompt)
+                if description:
+                    return description
+            except Exception:
+                pass
+        
+        # Try 2: llm_caption (direct OpenAI API)
+        llm_client = kwargs.get('llm_client')
+        llm_model = kwargs.get('llm_model')
+        if llm_client is not None and llm_model is not None:
+            try:
+                extension = None
+                if filename:
+                    extension = os.path.splitext(filename)[1]
+                
+                stream_info = StreamInfo(
+                    mimetype=content_type,
+                    extension=extension,
+                    filename=filename,
+                )
+                image_stream = io.BytesIO(image_bytes)
+                
+                description = llm_caption(
+                    image_stream,
+                    stream_info,
+                    client=llm_client,
+                    model=llm_model,
+                    prompt=kwargs.get('llm_prompt'),
+                )
+                if description:
+                    return description
+            except Exception:
+                pass
+        
+        # Try 3: PIL fallback (basic image analysis)
+        return self._describe_image_with_pil(image_bytes, content_type)
+    
+    def _describe_image_with_pil(
+        self,
+        image_bytes: bytes,
+        content_type: str | None,
+    ) -> str:
+        """
+        Basic image description using PIL (fallback when no LLM available).
+        
+        Extracts: format, dimensions, and dominant color.
+        
+        Args:
+            image_bytes: Raw image data
+            content_type: MIME type hint
+        
+        Returns:
+            Description like "PNG image (400x300), dominant color: blue"
+        """
+        try:
+            from PIL import Image
+            
+            img = Image.open(io.BytesIO(image_bytes))
+            width, height = img.size
+            img_format = img.format or 'Unknown'
+            
+            # Extract dominant color
+            dominant_color = self._get_dominant_color(img)
+            
+            return (
+                f"{img_format} image ({width}x{height}), "
+                f"dominant color: {dominant_color}"
+            )
+        except ImportError:
+            # PIL not installed
+            ext = ''
+            if content_type:
+                ext = content_type.split('/')[-1].upper()
+            return f"{ext or 'Unknown'} image"
+        except Exception:
+            return "Image (analysis failed)"
+    
+    def _get_dominant_color(self, img) -> str:
+        """
+        Extract dominant color name from PIL Image.
+        
+        Uses color quantization to find most common color,
+        then maps RGB to human-readable color name.
+        """
+        try:
+            # Resize for faster processing
+            small = img.copy()
+            small.thumbnail((50, 50))
+            
+            # Convert to RGB if needed
+            if small.mode != 'RGB':
+                small = small.convert('RGB')
+            
+            # Get colors (reduce to 5 colors)
+            colors = small.getcolors(maxcolors=2500)
+            if not colors:
+                return "multicolor"
+            
+            # Find most common color
+            colors.sort(key=lambda x: x[0], reverse=True)
+            count, (r, g, b) = colors[0]
+            
+            # Map RGB to color name
+            return self._rgb_to_color_name(r, g, b)
+        except Exception:
+            return "unknown"
+    
+    def _rgb_to_color_name(self, r: int, g: int, b: int) -> str:
+        """Map RGB values to basic color name."""
+        # Calculate brightness and saturation
+        max_c = max(r, g, b)
+        min_c = min(r, g, b)
+        
+        # Grayscale detection
+        if max_c - min_c < 30:
+            if max_c < 50:
+                return "black"
+            elif max_c > 200:
+                return "white"
+            else:
+                return "gray"
+        
+        # Color detection based on dominant channel
+        if r > g and r > b:
+            if r > 200 and g < 100 and b < 100:
+                return "red"
+            elif r > 200 and g > 150:
+                return "orange"
+            elif r > 200 and b > 150:
+                return "pink"
+            return "red"
+        elif g > r and g > b:
+            if g > 200 and r < 100 and b < 100:
+                return "green"
+            elif g > 200 and r > 200:
+                return "yellow"
+            return "green"
+        elif b > r and b > g:
+            if b > 200 and r < 100 and g < 100:
+                return "blue"
+            elif b > 200 and r > 150:
+                return "purple"
+            elif b > 200 and g > 150:
+                return "cyan"
+            return "blue"
+        
+        return "multicolor"
+    # --- END MODULE ---
+
+    def _save_smartart_images(
         self,
         pptx_stream: BinaryIO,
         diagram_path: str,
+        node_images: dict[str, str],
         slide_number: int,
         smartart_index: int,
         kwargs: dict,
-    ) -> List[str]:
+    ) -> dict[str, str]:
         """
-        Extract embedded images from SmartArt (if present).
+        Save SmartArt embedded images to disk and return path mapping.
         
-        Detects <a:blip> elements, resolves relationship IDs to media paths,
-        and saves images using BRIEF_01 logic.
+        Resolves rId references to media paths, saves images using
+        BRIEF_01 logic (deduplication via MD5 hash).
         
         Args:
             pptx_stream: PPTX file as binary stream
             diagram_path: Path within ZIP like "ppt/diagrams/data1.xml"
+            node_images: Dict mapping node_id -> rId for images
             slide_number: Slide number for naming
-            smartart_index: SmartArt index on slide for naming
-            kwargs: Converter options (output_images, etc.)
+            smartart_index: SmartArt index for naming
+            kwargs: Converter options (output_images, images_dir, etc.)
             
         Returns:
-            List of saved image paths (relative)
+            Dict mapping node_id -> saved_path (relative)
         """
-        image_paths = []
+        saved_paths = {}
         
-        if not kwargs.get('output_images'):
-            return image_paths
+        if not node_images or not kwargs.get('output_images'):
+            return saved_paths
         
         try:
-            # Reset stream position
             pptx_stream.seek(0)
             
             with zipfile.ZipFile(pptx_stream, 'r') as zf:
-                # Parse data XML
-                xml_bytes = zf.read(diagram_path)
-                root = etree.fromstring(xml_bytes)
-                
-                ns = {
-                    'a': (
-                        'http://schemas.openxmlformats.org/'
-                        'drawingml/2006/main'
-                    ),
-                    'r': (
-                        'http://schemas.openxmlformats.org/'
-                        'officeDocument/2006/relationships'
-                    ),
-                }
-                
-                # Find all blip elements (embedded images)
-                blips = root.findall('.//a:blip', namespaces=ns)
-                
-                if not blips:
-                    return image_paths
-                
                 # Parse relationship file for diagram
                 data_num = diagram_path.split('data')[-1].split('.')[0]
                 rels_path = f'ppt/diagrams/_rels/data{data_num}.xml.rels'
                 
-                rels_xml = zf.read(rels_path)
+                try:
+                    rels_xml = zf.read(rels_path)
+                except KeyError:
+                    return saved_paths
+                
                 rels_root = etree.fromstring(rels_xml)
                 
                 ns_rel = {
@@ -727,65 +961,175 @@ class PptxConverter(DocumentConverter):
                     )
                 }
                 
-                for idx, blip in enumerate(blips):
-                    r_id = blip.get(f'{{{ns["r"]}}}embed')
-                    if not r_id:
+                # Build rId -> media_path mapping
+                rid_to_path = {}
+                for rel in rels_root.findall(
+                    './/rel:Relationship', namespaces=ns_rel
+                ):
+                    rel_id = rel.get('Id')
+                    target = rel.get('Target')
+                    if rel_id and target:
+                        # Target is like "../media/image1.png"
+                        media_path = target.replace('../', 'ppt/')
+                        rid_to_path[rel_id] = media_path
+                
+                # Save each image associated with nodes
+                image_dir = kwargs.get('images_dir', 'images')
+                os.makedirs(image_dir, exist_ok=True)
+                
+                for idx, (node_id, r_id) in enumerate(node_images.items()):
+                    if r_id not in rid_to_path:
                         continue
                     
-                    # Resolve rId to media path
-                    for rel in rels_root.findall(
-                        './/rel:Relationship', namespaces=ns_rel
-                    ):
-                        if rel.get('Id') == r_id:
-                            target = rel.get('Target')
-                            # Target is like "../media/image1.png"
-                            media_path = target.replace('../', 'ppt/')
-                            
-                            # Extract image bytes
-                            image_bytes = zf.read(media_path)
-                            
-                            # Determine extension
-                            ext = media_path.split('.')[-1]
-                            
-                            # Save using BRIEF_01 logic
-                            shape_name = f'smartart{smartart_index}_item{idx}'
-                            saved_path = self._save_image(
-                                image_bytes,
-                                shape_name,
-                                slide_number,
-                                ext,
-                                kwargs,
-                            )
-                            
-                            if saved_path:
-                                image_paths.append(saved_path)
-                            
-                            break
+                    media_path = rid_to_path[r_id]
+                    
+                    try:
+                        image_bytes = zf.read(media_path)
+                    except KeyError:
+                        continue
+                    
+                    # Deduplication using MD5 hash
+                    image_hash = hashlib.md5(image_bytes).hexdigest()
+                    if image_hash in self._image_hashes:
+                        saved_paths[node_id] = self._image_hashes[image_hash]
+                        continue
+                    
+                    # Determine extension
+                    ext = '.' + media_path.split('.')[-1]
+                    
+                    # Generate filename
+                    img_filename = (
+                        f"slide{slide_number}_smartart{smartart_index}"
+                        f"_item{idx}{ext}"
+                    )
+                    
+                    # Build paths
+                    img_path_obj = Path(image_dir) / img_filename
+                    img_path = img_path_obj.as_posix()
+                    disk_path = str(img_path_obj)
+                    
+                    # Save to disk
+                    with open(disk_path, 'wb') as f:
+                        f.write(image_bytes)
+                    
+                    # Register in hash map
+                    self._image_hashes[image_hash] = img_path
+                    saved_paths[node_id] = img_path
             
         except Exception:
-            # Return partial results if error occurs
             pass
         
-        return image_paths
+        return saved_paths
+
+    def _describe_smartart_images(
+        self,
+        pptx_stream: BinaryIO,
+        diagram_path: str,
+        node_images: dict[str, str],
+        kwargs: dict,
+    ) -> dict[str, str]:
+        """
+        Generate descriptions for SmartArt images without saving to disk.
+        
+        Used in text-only mode to provide LLM/PIL descriptions of embedded
+        images that would otherwise be lost.
+        
+        Args:
+            pptx_stream: PPTX file as binary stream
+            diagram_path: Path within ZIP like "ppt/diagrams/data1.xml"
+            node_images: Dict mapping node_id -> rId for images
+            kwargs: Converter options (llm_callback, llm_client, llm_model, etc.)
+            
+        Returns:
+            Dict mapping node_id -> description string
+        """
+        descriptions = {}
+        
+        if not node_images:
+            return descriptions
+        
+        try:
+            pptx_stream.seek(0)
+            
+            with zipfile.ZipFile(pptx_stream, 'r') as zf:
+                # Parse relationship file for diagram
+                data_num = diagram_path.split('data')[-1].split('.')[0]
+                rels_path = f'ppt/diagrams/_rels/data{data_num}.xml.rels'
+                
+                try:
+                    rels_xml = zf.read(rels_path)
+                except KeyError:
+                    return descriptions
+                
+                rels_root = etree.fromstring(rels_xml)
+                
+                ns_rel = {
+                    'rel': (
+                        'http://schemas.openxmlformats.org/'
+                        'package/2006/relationships'
+                    )
+                }
+                
+                # Build rId -> media_path mapping
+                rid_to_path = {}
+                for rel in rels_root.findall(
+                    './/rel:Relationship', namespaces=ns_rel
+                ):
+                    rel_id = rel.get('Id')
+                    target = rel.get('Target')
+                    if rel_id and target:
+                        media_path = target.replace('../', 'ppt/')
+                        rid_to_path[rel_id] = media_path
+                
+                # Generate description for each image
+                for node_id, r_id in node_images.items():
+                    if r_id not in rid_to_path:
+                        continue
+                    
+                    media_path = rid_to_path[r_id]
+                    
+                    try:
+                        image_bytes = zf.read(media_path)
+                    except KeyError:
+                        continue
+                    
+                    # Determine content type from extension
+                    ext = media_path.split('.')[-1].lower()
+                    content_type = f'image/{ext}'
+                    filename = os.path.basename(media_path)
+                    
+                    # Generate description using cascade
+                    description = self._describe_image(
+                        image_bytes, content_type, filename, kwargs
+                    )
+                    descriptions[node_id] = description
+            
+        except Exception:
+            pass
+        
+        return descriptions
 
     def _convert_smartart_to_markdown(
         self,
-        texts: List[tuple[str, int]],
-        images: List[str],
+        texts: List[tuple[str, int, str]],
+        saved_images: dict[str, str],
         smartart_index: int,
         slide_number: int,
+        image_descriptions: dict[str, str] | None = None,
     ) -> str:
         """
         Convert SmartArt data to Markdown format with hierarchy.
         
-        Type 1 (text only): Hierarchical bulleted list with indentation
-        Type 2 (with embedded images): Two-column table
+        Type 1 (text only, no descriptions): Hierarchical bulleted list
+        Type 1b (text only, with descriptions): Table with Description | Details
+        Type 2 (with saved images): Table with Visual | Details
         
         Args:
-            texts: List of tuples (text, level) from SmartArt
-            images: List of image paths (empty for Type 1)
+            texts: List of tuples (text, level, node_id) from SmartArt
+            saved_images: Dict mapping node_id -> saved_path (empty for Type 1)
             smartart_index: SmartArt index for HTML comment
             slide_number: Slide number for HTML comment
+            image_descriptions: Dict mapping node_id -> description (for text-only mode)
             
         Returns:
             Markdown formatted string with blank lines before/after
@@ -799,9 +1143,11 @@ class PptxConverter(DocumentConverter):
             f"(Slide {slide_number}) -->\n\n"
         )
         
-        # Type 1: Text only (hierarchical list)
-        if not images:
-            for text, level in texts:
+        # Type 1: Text only without descriptions (simple hierarchical list)
+        if not saved_images and not image_descriptions:
+            for text, level, _ in texts:
+                if not text:  # Skip empty text nodes
+                    continue
                 # Indentation: 3 spaces per level (Markdown standard)
                 indent = '   ' * level
                 markdown += f"{indent}- {text}\n"
@@ -809,18 +1155,52 @@ class PptxConverter(DocumentConverter):
             markdown += "\n"
             return markdown
         
-        # Type 2: With embedded images (table format)
-        markdown += "| Visual | Details |\n"
+        # Type 1b or Type 2: Table format (with descriptions or images)
+        # Group items by level-0 nodes (each level-0 starts a new group)
+        groups = []  # [(image_or_desc, [(text, level), ...]), ...]
+        current_group = None
+        
+        for text, level, node_id in texts:
+            if level == 0:
+                # Start new group - prefer saved_images, fallback to descriptions
+                if saved_images:
+                    img_or_desc = saved_images.get(node_id, '')
+                else:
+                    img_or_desc = image_descriptions.get(node_id, '') if image_descriptions else ''
+                current_group = (img_or_desc, node_id, [(text, 0)])
+                groups.append(current_group)
+            elif current_group is not None:
+                # Add to current group as child
+                current_group[2].append((text, level))
+        
+        # Generate table header based on mode
+        if saved_images:
+            markdown += "| Visual | Details |\n"
+        else:
+            markdown += "| Image | Details |\n"
         markdown += "|--------|----------|\n"
         
-        # Map images to texts (assume 1:1 or fewer images than texts)
-        for idx, (text, _) in enumerate(texts):  # Ignore level for tables
-            if idx < len(images):
-                # Has corresponding image
-                markdown += f"| ![({images[idx]}) | {text} |\n"
+        for img_or_desc, node_id, items in groups:
+            # Build hierarchical text with HTML line breaks
+            details_parts = []
+            for item_text, item_level in items:
+                if not item_text:  # Skip empty text
+                    continue
+                # Indent: use non-breaking spaces for table cell
+                indent = '&nbsp;&nbsp;&nbsp;' * item_level
+                details_parts.append(f"{indent}- {item_text}")
+            
+            details = '<br>'.join(details_parts) if details_parts else ''
+            
+            # First column: image reference or description
+            if saved_images:
+                # Type 2: Image path
+                first_col = f"![]({img_or_desc})" if img_or_desc else ''
             else:
-                # No image for this text
-                markdown += f"|  | {text} |\n"
+                # Type 1b: Description text
+                first_col = img_or_desc if img_or_desc else ''
+            
+            markdown += f"| {first_col} | {details} |\n"
         
         # Add blank line after
         markdown += "\n"
