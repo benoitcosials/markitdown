@@ -25,7 +25,7 @@ def extract_smartart_blocks_with_images(markdown_text: str) -> list[dict]:
     Extract SmartArt blocks from Markdown, detecting if they contain images.
     
     Looks for:
-    - ### SmartArt N (Slide X) headers
+    - <!-- SmartArt N (Slide X) --> HTML comments
     - Table format (Type 2) with image links
     - List format (Type 1) without images
     
@@ -37,8 +37,8 @@ def extract_smartart_blocks_with_images(markdown_text: str) -> list[dict]:
     """
     smartart_blocks = []
     
-    # Pattern: ### SmartArt N (Slide X)
-    pattern = r'### SmartArt (\d+) \(Slide (\d+)\)'
+    # Pattern: <!-- SmartArt N (Slide X) -->
+    pattern = r'<!-- SmartArt (\d+) \(Slide (\d+)\) -->'
     
     matches = list(re.finditer(pattern, markdown_text))
     
@@ -195,7 +195,7 @@ def run_full_images_tests():
     print("=" * 80)
     print("TEST FULL IMAGES MODE - SMARTART WITH EMBEDDED IMAGES")
     print(f"Timestamp: {timestamp}")
-    print(f"Mode: output_images=True (extraction complète)")
+    print("Mode: output_images=True (extraction complète)")
     print("=" * 80 + "\n")
     
     results = []
@@ -211,9 +211,9 @@ def run_full_images_tests():
         results.append(result)
         
         if result["status"] == "SUCCESS":
-            print(f"  ✅ SUCCESS: {result['images']} images, {result['smartart_count']} SmartArt ({result['smartart_with_images']} avec images)")
+            print(f"  [OK] SUCCESS: {result['images']} images, {result['smartart_count']} SmartArt ({result['smartart_with_images']} avec images)")
         else:
-            print(f"  ❌ FAILED: {result['error']}")
+            print(f"  [ERREUR] FAILED: {result['error']}")
     
     # Generate report
     print("\n" + "=" * 80)
@@ -233,7 +233,7 @@ def run_full_images_tests():
         f.write("# Rapport Test FULL IMAGES Mode - SmartArt avec Images\n\n")
         f.write(f"**Date/Heure**: {timestamp}\n\n")
         f.write(f"**Dossier de résultats**: `pptx-result/full-images-{timestamp}/`\n\n")
-        f.write(f"**Mode de conversion**: `output_images=True` (extraction complète)\n\n")
+        f.write("**Mode de conversion**: `output_images=True` (extraction complète)\n\n")
         
         # Summary
         f.write("## Résumé\n\n")
@@ -308,7 +308,7 @@ def run_full_images_tests():
         f.write("## Statistiques Détaillées\n\n")
         if total_smartart > 0:
             files_with_smartart = [r for r in successful if r['smartart_count'] > 0]
-            f.write(f"**SmartArt**:\n")
+            f.write("**SmartArt**:\n")
             f.write(f"- Fichiers avec SmartArt: {len(files_with_smartart)} / {len(successful)}\n")
             if files_with_smartart:
                 avg_smartart = total_smartart / len(files_with_smartart)
@@ -316,7 +316,7 @@ def run_full_images_tests():
                 type2_percentage = (total_smartart_with_images / total_smartart) * 100
                 f.write(f"- Pourcentage Type 2 (avec images): {type2_percentage:.1f}%\n")
             
-            f.write(f"\n**Images**:\n")
+            f.write("\n**Images**:\n")
             f.write(f"- Total images extraites: {total_images}\n")
             if successful:
                 avg_images = total_images / len(successful)

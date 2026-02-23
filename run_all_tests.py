@@ -14,7 +14,6 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-import json
 
 
 def run_script(script_name: str) -> tuple[bool, str]:

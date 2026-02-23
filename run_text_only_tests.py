@@ -11,7 +11,6 @@ Key difference from run_comprehensive_tests.py:
 - Text-Only: Pure text conversion, no image files created
 """
 
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -24,8 +23,8 @@ def extract_smartart_blocks(markdown_text: str) -> list[dict]:
     Extract SmartArt blocks from Markdown content.
     
     Searches for patterns like:
-    - ### SmartArt N (Slide X)
-    - Numbered/bulleted lists following SmartArt headers
+    - <!-- SmartArt N (Slide X) -->
+    - Hierarchical lists following SmartArt comments
     
     Args:
         markdown_text: Markdown content to analyze
@@ -35,8 +34,8 @@ def extract_smartart_blocks(markdown_text: str) -> list[dict]:
     """
     smartart_blocks = []
     
-    # Pattern: ### SmartArt N (Slide X)
-    pattern = r'### SmartArt (\d+) \(Slide (\d+)\)'
+    # Pattern: <!-- SmartArt N (Slide X) -->
+    pattern = r'<!-- SmartArt (\d+) \(Slide (\d+)\) -->'
     
     matches = list(re.finditer(pattern, markdown_text))
     
@@ -160,7 +159,7 @@ def run_text_only_tests():
     print("=" * 80)
     print("TEST TEXT-ONLY MODE - FOCUS SMARTART EXTRACTION")
     print(f"Timestamp: {timestamp}")
-    print(f"Mode: output_images=False (texte seulement)")
+    print("Mode: output_images=False (texte seulement)")
     print("=" * 80 + "\n")
     
     results = []
@@ -176,10 +175,10 @@ def run_text_only_tests():
         results.append(result)
         
         if result["status"] == "SUCCESS":
-            smartart_info = f"{result['smartart_count']} SmartArt trouvés" if result['smartart_count'] else "Aucun SmartArt"
-            print(f"  ✅ SUCCESS: {smartart_info}")
+            smartart_info = f"{result['smartart_count']} SmartArt trouves" if result['smartart_count'] else "Aucun SmartArt"
+            print(f"  [OK] SUCCESS: {smartart_info}")
         else:
-            print(f"  ❌ FAILED: {result['error']}")
+            print(f"  [ERREUR] FAILED: {result['error']}")
     
     # Generate report
     print("\n" + "=" * 80)
@@ -197,7 +196,7 @@ def run_text_only_tests():
         f.write("# Rapport Test TEXT-ONLY Mode - SmartArt Focus\n\n")
         f.write(f"**Date/Heure**: {timestamp}\n\n")
         f.write(f"**Dossier de résultats**: `pptx-result/text-only-{timestamp}/`\n\n")
-        f.write(f"**Mode de conversion**: `output_images=False` (texte seulement)\n\n")
+        f.write("**Mode de conversion**: `output_images=False` (texte seulement)\n\n")
         
         # Summary
         f.write("## Résumé\n\n")

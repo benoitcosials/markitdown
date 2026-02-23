@@ -533,21 +533,21 @@ class PptxConverter(DocumentConverter):
 
     def _extract_smartart_text(
         self, pptx_stream: BinaryIO, diagram_path: str
-    ) -> List[str]:
+    ) -> List[tuple[str, int]]:
         """
-        Extract all text nodes from a SmartArt diagram.
+        Extract text nodes from SmartArt with hierarchy levels.
         
-        Reads the data{N}.xml file directly from ZIP and parses
-        <dgm:pt> nodes to extract <a:t> text elements.
+        Reads data{N}.xml, extracts <dgm:pt> nodes, concatenates text per point,
+        and determines hierarchy level using <dgm:cxn> connections.
         
         Args:
             pptx_stream: PPTX file as binary stream
             diagram_path: Path within ZIP like "ppt/diagrams/data1.xml"
             
         Returns:
-            List of text strings from SmartArt nodes
+            List of tuples (text, level) where level is indentation depth (0-based)
         """
-        texts = []
+        nodes_with_text = []
         
         try:
             # Reset stream position
@@ -568,21 +568,103 @@ class PptxConverter(DocumentConverter):
                     ),
                 }
                 
-                # Extract all point nodes
+                # Extract all point nodes with IDs
                 points = root.findall('.//dgm:pt', namespaces=ns)
+                node_texts = {}  # modelId -> concatenated text
                 
                 for pt in points:
-                    # Find all text elements within this point
+                    model_id = pt.get('modelId')
+                    if not model_id:
+                        continue
+                    
+                    # Concatenate all text elements within this point
+                    text_parts = []
                     text_elems = pt.findall('.//a:t', namespaces=ns)
                     for text_elem in text_elems:
                         if text_elem.text:
-                            texts.append(text_elem.text.strip())
+                            text_parts.append(text_elem.text.strip())
+                    
+                    if text_parts:
+                        # Join with space to handle multi-part text like "Level" + "1"
+                        full_text = ' '.join(text_parts)
+                        node_texts[model_id] = full_text
+                
+                # Extract connections to build hierarchy
+                connections = root.findall('.//dgm:cxn', namespaces=ns)
+                parent_map = {}  # child_id -> parent_id
+                
+                for cxn in connections:
+                    cxn_type = cxn.get('type')
+                    if cxn_type == 'parOf':  # Parent-child relationship
+                        src_id = cxn.get('srcId')  # Child
+                        dest_id = cxn.get('destId')  # Parent
+                        if src_id and dest_id:
+                            parent_map[src_id] = dest_id
+                
+                # Calculate level for each node
+                def get_level(node_id: str, visited: set = None) -> int:
+                    """Calculate indentation level by counting ancestors."""
+                    if visited is None:
+                        visited = set()
+                    
+                    if node_id in visited:  # Avoid cycles
+                        return 0
+                    
+                    visited.add(node_id)
+                    
+                    if node_id not in parent_map:
+                        return 0  # Root node
+                    
+                    parent_id = parent_map[node_id]
+                    return 1 + get_level(parent_id, visited)
+                
+                def infer_level_from_text(text: str) -> int:
+                    """
+                    Infer hierarchy level from text patterns.
+                    
+                    Examples:
+                    - "Level 1" → 0
+                    - "Level 1.1" → 1
+                    - "Level 1.1.1" → 2
+                    - "Item A" → 0
+                    - "  Subitem" → 1 (leading whitespace)
+                    """
+                    # Check for numbered hierarchy (1.1, 1.2.3, etc.)
+                    import re
+                    match = re.search(r'(\d+\.)+\d+', text)
+                    if match:
+                        # Count dots to determine level
+                        dots = match.group(0).count('.')
+                        return dots
+                    
+                    # Check for leading whitespace (indentation in source)
+                    stripped = text.lstrip()
+                    if len(text) != len(stripped):
+                        # Has leading whitespace, assume level 1
+                        return 1
+                    
+                    return 0
+                
+                # Build final list with hierarchy
+                for model_id, text in node_texts.items():
+                    # Try connection-based level first
+                    level = get_level(model_id)
+                    
+                    # If no connections found, try text-based heuristic
+                    if level == 0 and parent_map:
+                        # Connections exist but this node is root
+                        pass
+                    elif not parent_map:
+                        # No connections at all, use text heuristic
+                        level = infer_level_from_text(text)
+                    
+                    nodes_with_text.append((text, level))
             
         except Exception:
             # Return partial results if error occurs
             pass
         
-        return texts
+        return nodes_with_text
 
     def _extract_smartart_images(
         self,
@@ -696,38 +778,43 @@ class PptxConverter(DocumentConverter):
 
     def _convert_smartart_to_markdown(
         self,
-        texts: List[str],
+        texts: List[tuple[str, int]],
         images: List[str],
         smartart_index: int,
         slide_number: int,
     ) -> str:
         """
-        Convert SmartArt data to Markdown format.
+        Convert SmartArt data to Markdown format with hierarchy.
         
-        Type 1 (text only): Simple bulleted list
+        Type 1 (text only): Hierarchical bulleted list with indentation
         Type 2 (with embedded images): Two-column table
         
         Args:
-            texts: List of text strings from SmartArt
+            texts: List of tuples (text, level) from SmartArt
             images: List of image paths (empty for Type 1)
-            smartart_index: SmartArt index for title
-            slide_number: Slide number for title
+            smartart_index: SmartArt index for HTML comment
+            slide_number: Slide number for HTML comment
             
         Returns:
-            Markdown formatted string
+            Markdown formatted string with blank lines before/after
         """
         if not texts:
             return ""
         
+        # Use HTML comment instead of markdown heading
         markdown = (
-            f"\n\n### SmartArt {smartart_index + 1} "
-            f"(Slide {slide_number})\n\n"
+            f"\n\n<!-- SmartArt {smartart_index + 1} "
+            f"(Slide {slide_number}) -->\n\n"
         )
         
-        # Type 1: Text only (simple list)
+        # Type 1: Text only (hierarchical list)
         if not images:
-            for text in texts:
-                markdown += f"- {text}\n"
+            for text, level in texts:
+                # Indentation: 3 spaces per level (Markdown standard)
+                indent = '   ' * level
+                markdown += f"{indent}- {text}\n"
+            # Add blank line after
+            markdown += "\n"
             return markdown
         
         # Type 2: With embedded images (table format)
@@ -735,7 +822,7 @@ class PptxConverter(DocumentConverter):
         markdown += "|--------|----------|\n"
         
         # Map images to texts (assume 1:1 or fewer images than texts)
-        for idx, text in enumerate(texts):
+        for idx, (text, _) in enumerate(texts):  # Ignore level for tables
             if idx < len(images):
                 # Has corresponding image
                 markdown += f"| ![({images[idx]}) | {text} |\n"
@@ -743,6 +830,8 @@ class PptxConverter(DocumentConverter):
                 # No image for this text
                 markdown += f"|  | {text} |\n"
         
+        # Add blank line after
+        markdown += "\n"
         return markdown
     # --- END MODULE ---
 
