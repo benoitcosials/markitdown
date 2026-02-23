@@ -537,8 +537,8 @@ class PptxConverter(DocumentConverter):
         """
         Extract text nodes from SmartArt with hierarchy levels.
         
-        Reads data{N}.xml, extracts <dgm:pt> nodes, concatenates text per point,
-        and determines hierarchy level using <dgm:cxn> connections.
+        Reads data{N}.xml, extracts <dgm:pt> nodes, and determines hierarchy
+        using <dgm:cxn> connections with srcOrd for ordering.
         
         Args:
             pptx_stream: PPTX file as binary stream
@@ -550,7 +550,6 @@ class PptxConverter(DocumentConverter):
         nodes_with_text = []
         
         try:
-            # Reset stream position
             pptx_stream.seek(0)
             
             with zipfile.ZipFile(pptx_stream, 'r') as zf:
@@ -568,103 +567,96 @@ class PptxConverter(DocumentConverter):
                     ),
                 }
                 
-                # Extract all point nodes with IDs
+                # Extract point types and text
                 points = root.findall('.//dgm:pt', namespaces=ns)
-                node_texts = {}  # modelId -> concatenated text
+                node_texts = {}  # modelId -> text
+                node_types = {}  # modelId -> type (doc, parTrans, sibTrans, pres)
+                doc_node_id = None
                 
                 for pt in points:
                     model_id = pt.get('modelId')
                     if not model_id:
                         continue
                     
-                    # Concatenate all text elements within this point
-                    text_parts = []
-                    text_elems = pt.findall('.//a:t', namespaces=ns)
-                    for text_elem in text_elems:
-                        if text_elem.text:
-                            text_parts.append(text_elem.text.strip())
+                    pt_type = pt.get('type')
+                    node_types[model_id] = pt_type
                     
-                    if text_parts:
-                        # Join with space to handle multi-part text like "Level" + "1"
-                        full_text = ' '.join(text_parts)
-                        node_texts[model_id] = full_text
+                    if pt_type == 'doc':
+                        doc_node_id = model_id
+                    
+                    # Extract text (only for data nodes)
+                    if pt_type in (None, 'node'):  # Normal data nodes
+                        text_parts = []
+                        for text_elem in pt.findall('.//a:t', namespaces=ns):
+                            if text_elem.text:
+                                text_parts.append(text_elem.text.strip())
+                        if text_parts:
+                            node_texts[model_id] = ' '.join(text_parts)
                 
-                # Extract connections to build hierarchy
+                # Build children map: parent_id -> [(srcOrd, child_id), ...]
                 connections = root.findall('.//dgm:cxn', namespaces=ns)
-                parent_map = {}  # child_id -> parent_id
+                children_map = {}  # parent_id -> list of (order, child_id)
                 
                 for cxn in connections:
                     cxn_type = cxn.get('type')
-                    if cxn_type == 'parOf':  # Parent-child relationship
-                        src_id = cxn.get('srcId')  # Child
-                        dest_id = cxn.get('destId')  # Parent
+                    # Data hierarchy = connections WITHOUT type attribute
+                    if cxn_type is None:
+                        src_id = cxn.get('srcId')   # Parent
+                        dest_id = cxn.get('destId')  # Child
+                        src_ord = cxn.get('srcOrd', '0')
+                        
                         if src_id and dest_id:
-                            parent_map[src_id] = dest_id
+                            # Skip transition nodes as children
+                            child_type = node_types.get(dest_id)
+                            if child_type in ('parTrans', 'sibTrans', 'pres'):
+                                continue
+                            
+                            if src_id not in children_map:
+                                children_map[src_id] = []
+                            try:
+                                order = int(src_ord)
+                            except ValueError:
+                                order = 0
+                            children_map[src_id].append((order, dest_id))
                 
-                # Calculate level for each node
-                def get_level(node_id: str, visited: set = None) -> int:
-                    """Calculate indentation level by counting ancestors."""
-                    if visited is None:
-                        visited = set()
-                    
-                    if node_id in visited:  # Avoid cycles
-                        return 0
-                    
-                    visited.add(node_id)
-                    
-                    if node_id not in parent_map:
-                        return 0  # Root node
-                    
-                    parent_id = parent_map[node_id]
-                    return 1 + get_level(parent_id, visited)
+                # Sort children by order
+                for parent_id in children_map:
+                    children_map[parent_id].sort(key=lambda x: x[0])
                 
-                def infer_level_from_text(text: str) -> int:
-                    """
-                    Infer hierarchy level from text patterns.
+                # Traverse tree recursively starting from doc node
+                def traverse(node_id: str, level: int):
+                    """Traverse tree, collecting text nodes with levels."""
+                    # Add this node if it has text
+                    if node_id in node_texts:
+                        nodes_with_text.append((node_texts[node_id], level))
                     
-                    Examples:
-                    - "Level 1" → 0
-                    - "Level 1.1" → 1
-                    - "Level 1.1.1" → 2
-                    - "Item A" → 0
-                    - "  Subitem" → 1 (leading whitespace)
-                    """
-                    # Check for numbered hierarchy (1.1, 1.2.3, etc.)
-                    import re
-                    match = re.search(r'(\d+\.)+\d+', text)
-                    if match:
-                        # Count dots to determine level
-                        dots = match.group(0).count('.')
-                        return dots
-                    
-                    # Check for leading whitespace (indentation in source)
-                    stripped = text.lstrip()
-                    if len(text) != len(stripped):
-                        # Has leading whitespace, assume level 1
-                        return 1
-                    
-                    return 0
+                    # Process children in order
+                    if node_id in children_map:
+                        for _, child_id in children_map[node_id]:
+                            # Children of doc = level 0, their children = level 1
+                            child_level = level if node_id == doc_node_id else level + 1
+                            traverse(child_id, child_level)
                 
-                # Build final list with hierarchy
-                for model_id, text in node_texts.items():
-                    # Try connection-based level first
-                    level = get_level(model_id)
-                    
-                    # If no connections found, try text-based heuristic
-                    if level == 0 and parent_map:
-                        # Connections exist but this node is root
-                        pass
-                    elif not parent_map:
-                        # No connections at all, use text heuristic
-                        level = infer_level_from_text(text)
-                    
-                    nodes_with_text.append((text, level))
+                if doc_node_id:
+                    traverse(doc_node_id, 0)
+                elif node_texts:
+                    # Fallback: no doc node, use text-based heuristic
+                    for model_id, text in node_texts.items():
+                        level = self._infer_level_from_text(text)
+                        nodes_with_text.append((text, level))
             
         except Exception:
-            # Return partial results if error occurs
             pass
         
         return nodes_with_text
+
+    def _infer_level_from_text(self, text: str) -> int:
+        """Infer hierarchy level from text patterns (fallback)."""
+        import re
+        match = re.search(r'(\d+\.)+\d+', text)
+        if match:
+            return match.group(0).count('.')
+        return 0
 
     def _extract_smartart_images(
         self,
