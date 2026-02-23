@@ -11,8 +11,8 @@ import concurrent.futures
 from typing import Optional
 
 from markitdown import MarkItDown
-from mcp.server.fastmcp import FastMCP
 from mcp.server import Server
+from mcp.server.fastmcp import FastMCP
 
 from .utils import (
     check_plugins_enabled,
