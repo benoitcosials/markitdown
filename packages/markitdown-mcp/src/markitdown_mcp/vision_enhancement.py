@@ -13,6 +13,7 @@ by leveraging the client's own multimodal vision capabilities.
 
 import base64
 import imghdr
+import os
 import re
 from typing import Optional
 
@@ -49,23 +50,30 @@ def parse_markdown_images(markdown: str) -> list[tuple[str, str]]:
     return re.findall(pattern, markdown)
 
 
-def read_image_file(image_path: str) -> Optional[bytes]:
+def read_image_file(image_path: str, base_path: str | None = None) -> Optional[bytes]:
     """
     Read image file and return bytes content.
     
     Args:
         image_path: Path to image file (relative or absolute)
+        base_path: Base directory to resolve relative paths (optional)
         
     Returns:
         Image bytes if file exists, None otherwise
         
     Example:
-        >>> data = read_image_file("images/photo.png")
+        >>> data = read_image_file("images/photo.png", "/docs")
         >>> data is not None
         True
     """
     try:
-        with open(image_path, 'rb') as f:
+        # Resolve relative path if base_path provided
+        if base_path and not os.path.isabs(image_path):
+            full_path = os.path.join(base_path, image_path)
+        else:
+            full_path = image_path
+        
+        with open(full_path, 'rb') as f:
             return f.read()
     except FileNotFoundError:
         return None
@@ -214,7 +222,11 @@ async def client_supports_sampling(server: Server) -> bool:
 # --- Mode 1: Alt Text Enrichment ---
 
 
-async def _enhance_alt_texts(markdown: str, server: Server) -> str:
+async def _enhance_alt_texts(
+    markdown: str,
+    server: Server,
+    base_path: str | None = None
+) -> str:
     """
     Mode 1: Enrich alt text for images WITHOUT existing alt text.
     
@@ -227,6 +239,7 @@ async def _enhance_alt_texts(markdown: str, server: Server) -> str:
     Args:
         markdown: Markdown content to enhance
         server: MCP server for sampling requests
+        base_path: Base directory for resolving relative image paths
         
     Returns:
         Markdown with enriched alt text
@@ -244,7 +257,7 @@ async def _enhance_alt_texts(markdown: str, server: Server) -> str:
             continue
         
         # Read image file
-        image_data = read_image_file(image_path)
+        image_data = read_image_file(image_path, base_path)
         if not image_data:
             # Skip if file not found (broken reference)
             continue
@@ -271,7 +284,11 @@ async def _enhance_alt_texts(markdown: str, server: Server) -> str:
 # --- Mode 2: Description Blocks ---
 
 
-async def _generate_description_blocks(markdown: str, server: Server) -> str:
+async def _generate_description_blocks(
+    markdown: str,
+    server: Server,
+    base_path: str | None = None
+) -> str:
     """
     Mode 2: Generate detailed description blocks for ALL images.
     
@@ -284,6 +301,7 @@ async def _generate_description_blocks(markdown: str, server: Server) -> str:
     Args:
         markdown: Markdown content to enhance
         server: MCP server for sampling requests
+        base_path: Base directory for resolving relative image paths
         
     Returns:
         Markdown with image-description blocks replacing image references
@@ -302,7 +320,7 @@ async def _generate_description_blocks(markdown: str, server: Server) -> str:
     
     for alt_text, image_path in images:
         # Read image file
-        image_data = read_image_file(image_path)
+        image_data = read_image_file(image_path, base_path)
         if not image_data:
             # Skip if file not found
             continue
@@ -342,7 +360,8 @@ async def _generate_description_blocks(markdown: str, server: Server) -> str:
 async def enhance_markdown_with_client_vision(
     markdown: str,
     server: Server,
-    output_images: bool
+    output_images: bool,
+    base_path: str | None = None
 ) -> str:
     """
     Enhance Markdown with client vision analysis via MCP Sampling.
@@ -361,6 +380,7 @@ async def enhance_markdown_with_client_vision(
         markdown: Markdown content to enhance
         server: MCP server instance for sampling
         output_images: Mode selector (True=alt text, False=description blocks)
+        base_path: Base directory for resolving relative image paths
         
     Returns:
         Enhanced markdown with vision-generated descriptions
@@ -387,7 +407,7 @@ async def enhance_markdown_with_client_vision(
     # Delegate to mode-specific function
     if output_images:
         # Mode 1: Enrich alt text for images without alt text
-        return await _enhance_alt_texts(markdown, server)
+        return await _enhance_alt_texts(markdown, server, base_path)
     else:
         # Mode 2: Generate description blocks for all images
-        return await _generate_description_blocks(markdown, server)
+        return await _generate_description_blocks(markdown, server, base_path)

@@ -85,6 +85,34 @@ def resolve_image_dir_for_file_uri(
         return image_dir
 
 
+def get_base_path_for_uri(uri: str) -> Optional[str]:
+    """
+    Extract base directory path from a file:// URI.
+    
+    Used for resolving relative image paths in generated markdown.
+    Returns the parent directory of the source file.
+    
+    Args:
+        uri: Source file URI (e.g., "file:///C:/docs/presentation.pptx")
+        
+    Returns:
+        Absolute path to parent directory, or None for non-file URIs.
+        
+    Example:
+        >>> get_base_path_for_uri("file:///C:/docs/presentation.pptx")
+        'C:/docs'
+    """
+    if not uri.startswith("file://"):
+        return None
+    
+    try:
+        file_path_str = urllib.parse.unquote(uri.replace("file:///", ""))
+        source_file = Path(file_path_str)
+        return str(source_file.parent)
+    except (ValueError, OSError):
+        return None
+
+
 def check_plugins_enabled() -> bool:
     """
     Check if MarkItDown plugins are enabled via environment variable.

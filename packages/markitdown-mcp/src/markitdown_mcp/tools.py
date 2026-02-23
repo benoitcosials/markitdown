@@ -9,7 +9,11 @@ support for multiple formats and optional image extraction.
 from markitdown import MarkItDown
 from mcp.server.fastmcp import FastMCP
 
-from .utils import check_plugins_enabled, resolve_image_dir_for_file_uri
+from .utils import (
+    check_plugins_enabled,
+    get_base_path_for_uri,
+    resolve_image_dir_for_file_uri,
+)
 from .vision_enhancement import enhance_markdown_with_client_vision
 
 # Initialize FastMCP server instance
@@ -83,10 +87,14 @@ async def convert_to_markdown(
     # Delegate image analysis to calling LLM client via MCP sampling
     # (MCP Protocol 2024-11-05 - sampling/createMessage capability)
     if use_client_vision:
+        # Get base path for resolving relative image paths
+        base_path = get_base_path_for_uri(uri)
+        
         markdown = await enhance_markdown_with_client_vision(
             markdown=markdown,
             server=mcp._mcp_server,
-            output_images=output_images
+            output_images=output_images,
+            base_path=base_path
         )
     
     # Step 6: Return final markdown
