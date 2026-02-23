@@ -8,7 +8,7 @@ import sys
 import unicodedata
 import zipfile
 from pathlib import Path
-from typing import Any, BinaryIO, Callable, List, Optional
+from typing import Any, BinaryIO, List, Optional
 from urllib.parse import quote
 
 # Try loading lxml for SmartArt extraction (BRIEF_05)
@@ -1173,13 +1173,8 @@ class PptxConverter(DocumentConverter):
                 # Add to current group as child
                 current_group[2].append((text, level))
         
-        # Generate table header based on mode
-        if saved_images:
-            markdown += "| Visual | Details |\n"
-        else:
-            markdown += "| Image | Details |\n"
-        markdown += "|--------|----------|\n"
-        
+        # Build rows first to calculate column widths
+        rows = []
         for img_or_desc, node_id, items in groups:
             # Build hierarchical text with HTML line breaks
             details_parts = []
@@ -1194,13 +1189,25 @@ class PptxConverter(DocumentConverter):
             
             # First column: image reference or description
             if saved_images:
-                # Type 2: Image path
                 first_col = f"![]({img_or_desc})" if img_or_desc else ''
             else:
-                # Type 1b: Description text
                 first_col = img_or_desc if img_or_desc else ''
             
-            markdown += f"| {first_col} | {details} |\n"
+            rows.append((first_col, details))
+        
+        # Calculate column widths for alignment
+        header1 = "Visual" if saved_images else "Image"
+        header2 = "Details"
+        
+        col1_width = max(len(header1), max((len(r[0]) for r in rows), default=0))
+        col2_width = max(len(header2), max((len(r[1]) for r in rows), default=0))
+        
+        # Generate aligned table
+        markdown += f"| {header1:<{col1_width}} | {header2:<{col2_width}} |\n"
+        markdown += f"|{'-' * (col1_width + 2)}|{'-' * (col2_width + 2)}|\n"
+        
+        for first_col, details in rows:
+            markdown += f"| {first_col:<{col1_width}} | {details:<{col2_width}} |\n"
         
         # Add blank line after
         markdown += "\n"
