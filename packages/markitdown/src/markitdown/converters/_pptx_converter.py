@@ -6,9 +6,17 @@ import os
 import re
 import sys
 import unicodedata
+import zipfile
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, List, Optional
 from urllib.parse import quote
+
+# Try loading lxml for SmartArt extraction (BRIEF_05)
+try:
+    from lxml import etree
+    LXML_AVAILABLE = True
+except ImportError:
+    LXML_AVAILABLE = False
 
 from .._base_converter import DocumentConverter, DocumentConverterResult
 from .._exceptions import (
@@ -137,6 +145,8 @@ class PptxConverter(DocumentConverter):
         
         md_content = ""
         slide_num = 0
+        smartart_count = 0  # Global counter for all SmartArt (BRIEF_05)
+        
         for slide in presentation.slides:
             slide_num += 1
 
@@ -147,6 +157,8 @@ class PptxConverter(DocumentConverter):
             def get_shape_content(shape, **kwargs):
                 nonlocal md_content
                 nonlocal image_count  # For sequential image naming
+                nonlocal smartart_count  # For sequential SmartArt naming (BRIEF_05)
+                nonlocal file_stream  # For SmartArt ZIP access (BRIEF_05)
                 # Pictures
                 if self._is_picture(shape):
                     # --- MODULE: Skip Background Images (BRIEF_01) ---
@@ -246,6 +258,47 @@ class PptxConverter(DocumentConverter):
                 # Tables
                 if self._is_table(shape):
                     md_content += self._convert_table_to_markdown(shape.table, **kwargs)
+
+                # --- MODULE: SmartArt Extraction (BRIEF_05) ---
+                # SmartArt (must check before charts/text)
+                if self._is_smartart(shape):
+                    if not LXML_AVAILABLE:
+                        # Skip if lxml not installed
+                        return
+                    
+                    nonlocal smartart_count
+                    
+                    # Find diagram data file
+                    diagram_path = self._get_smartart_diagram_path(
+                        file_stream, slide_num - 1, shape
+                    )
+                    
+                    if diagram_path:
+                        # Extract text nodes
+                        texts = self._extract_smartart_text(
+                            file_stream, diagram_path
+                        )
+                        
+                        # Extract embedded images (if present and enabled)
+                        images = self._extract_smartart_images(
+                            file_stream,
+                            diagram_path,
+                            slide_num,
+                            smartart_count,
+                            kwargs,
+                        )
+                        
+                        # Convert to Markdown
+                        smartart_md = self._convert_smartart_to_markdown(
+                            texts, images, smartart_count, slide_num
+                        )
+                        
+                        if smartart_md:
+                            md_content += smartart_md
+                            smartart_count += 1
+                    
+                    return  # Don't process as regular shape
+                # --- END MODULE ---
 
                 # Charts
                 if shape.has_chart:
@@ -372,6 +425,325 @@ class PptxConverter(DocumentConverter):
         # Threshold: 20 KB (100% accurate on 14 ambiguous samples)
         size_kb = len(shape.image.blob) / 1024
         return 'icon' if size_kb < 20 else 'photo'
+    # --- END MODULE ---
+
+    # --- MODULE: SmartArt Detection (BRIEF_05) ---
+    def _is_smartart(self, shape) -> bool:
+        """
+        Detect if shape is a SmartArt by checking graphic URI.
+        
+        Note: python-pptx has NO native SmartArt API. There is no
+        MSO_SHAPE_TYPE.SMART_ART enum, and no shape.smart_art attribute.
+        We must check the GraphicFrame's graphic data URI for the
+        diagram namespace to detect SmartArt.
+        
+        Args:
+            shape: Shape object from python-pptx
+            
+        Returns:
+            bool: True if shape is SmartArt, False otherwise
+        """
+        try:
+            # SmartArt must have _element attribute
+            if not hasattr(shape, '_element'):
+                return False
+            
+            # SmartArt are GraphicFrames with specific URI
+            if not hasattr(shape._element, 'graphic'):
+                return False
+            
+            graphic_data = shape._element.graphic.graphicData
+            uri = graphic_data.get('uri', '')
+            
+            # Check for diagram namespace
+            diagram_uri = (
+                "http://schemas.openxmlformats.org/"
+                "drawingml/2006/diagram"
+            )
+            return diagram_uri in uri
+            
+        except AttributeError:
+            return False
+
+    def _get_smartart_diagram_path(
+        self, pptx_stream: BinaryIO, slide_index: int, shape
+    ) -> Optional[str]:
+        """
+        Find the diagram data XML path for a SmartArt shape.
+        
+        SmartArt data is stored in ppt/diagrams/data{N}.xml, but N is not
+        the sequential order. We must resolve the relationship ID from
+        the slide's relationship file.
+        
+        Args:
+            pptx_stream: PPTX file as binary stream
+            slide_index: 0-based slide index
+            shape: SmartArt shape object
+            
+        Returns:
+            Path within ZIP like "ppt/diagrams/data3.xml" or None if error
+        """
+        try:
+            # Extract relationship ID from GraphicFrame
+            graphic_data = shape._element.graphic.graphicData
+            
+            # Find the diagram reference element
+            ns_dgm = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
+            diagram_ref = graphic_data.find(f'.//{{{ns_dgm}}}relIds')
+            if diagram_ref is None:
+                return None
+            
+            ns_r = (
+                "http://schemas.openxmlformats.org/"
+                "officeDocument/2006/relationships"
+            )
+            r_id = diagram_ref.get(f'{{{ns_r}}}dm')
+            if not r_id:
+                return None
+            
+            # Parse slide relationship file from stream
+            rels_path = f'ppt/slides/_rels/slide{slide_index + 1}.xml.rels'
+            
+            # Reset stream position
+            pptx_stream.seek(0)
+            
+            with zipfile.ZipFile(pptx_stream, 'r') as zf:
+                rels_xml = zf.read(rels_path)
+                rels_root = etree.fromstring(rels_xml)
+                
+                # Find relationship with matching Id
+                ns_rel = (
+                    "http://schemas.openxmlformats.org/"
+                    "package/2006/relationships"
+                )
+                for rel in rels_root.findall(
+                    f'.//{{{ns_rel}}}Relationship', namespaces={'rel': ns_rel}
+                ):
+                    if rel.get('Id') == r_id:
+                        target = rel.get('Target')
+                        # Target is like "../diagrams/data1.xml"
+                        # Convert to "ppt/diagrams/data1.xml"
+                        return target.replace('../', 'ppt/')
+            
+            return None
+            
+        except Exception:
+            # Return None if any error occurs
+            return None
+
+    def _extract_smartart_text(
+        self, pptx_stream: BinaryIO, diagram_path: str
+    ) -> List[str]:
+        """
+        Extract all text nodes from a SmartArt diagram.
+        
+        Reads the data{N}.xml file directly from ZIP and parses
+        <dgm:pt> nodes to extract <a:t> text elements.
+        
+        Args:
+            pptx_stream: PPTX file as binary stream
+            diagram_path: Path within ZIP like "ppt/diagrams/data1.xml"
+            
+        Returns:
+            List of text strings from SmartArt nodes
+        """
+        texts = []
+        
+        try:
+            # Reset stream position
+            pptx_stream.seek(0)
+            
+            with zipfile.ZipFile(pptx_stream, 'r') as zf:
+                xml_bytes = zf.read(diagram_path)
+                root = etree.fromstring(xml_bytes)
+                
+                ns = {
+                    'dgm': (
+                        'http://schemas.openxmlformats.org/'
+                        'drawingml/2006/diagram'
+                    ),
+                    'a': (
+                        'http://schemas.openxmlformats.org/'
+                        'drawingml/2006/main'
+                    ),
+                }
+                
+                # Extract all point nodes
+                points = root.findall('.//dgm:pt', namespaces=ns)
+                
+                for pt in points:
+                    # Find all text elements within this point
+                    text_elems = pt.findall('.//a:t', namespaces=ns)
+                    for text_elem in text_elems:
+                        if text_elem.text:
+                            texts.append(text_elem.text.strip())
+            
+        except Exception:
+            # Return partial results if error occurs
+            pass
+        
+        return texts
+
+    def _extract_smartart_images(
+        self,
+        pptx_stream: BinaryIO,
+        diagram_path: str,
+        slide_number: int,
+        smartart_index: int,
+        kwargs: dict,
+    ) -> List[str]:
+        """
+        Extract embedded images from SmartArt (if present).
+        
+        Detects <a:blip> elements, resolves relationship IDs to media paths,
+        and saves images using BRIEF_01 logic.
+        
+        Args:
+            pptx_stream: PPTX file as binary stream
+            diagram_path: Path within ZIP like "ppt/diagrams/data1.xml"
+            slide_number: Slide number for naming
+            smartart_index: SmartArt index on slide for naming
+            kwargs: Converter options (output_images, etc.)
+            
+        Returns:
+            List of saved image paths (relative)
+        """
+        image_paths = []
+        
+        if not kwargs.get('output_images'):
+            return image_paths
+        
+        try:
+            # Reset stream position
+            pptx_stream.seek(0)
+            
+            with zipfile.ZipFile(pptx_stream, 'r') as zf:
+                # Parse data XML
+                xml_bytes = zf.read(diagram_path)
+                root = etree.fromstring(xml_bytes)
+                
+                ns = {
+                    'a': (
+                        'http://schemas.openxmlformats.org/'
+                        'drawingml/2006/main'
+                    ),
+                    'r': (
+                        'http://schemas.openxmlformats.org/'
+                        'officeDocument/2006/relationships'
+                    ),
+                }
+                
+                # Find all blip elements (embedded images)
+                blips = root.findall('.//a:blip', namespaces=ns)
+                
+                if not blips:
+                    return image_paths
+                
+                # Parse relationship file for diagram
+                data_num = diagram_path.split('data')[-1].split('.')[0]
+                rels_path = f'ppt/diagrams/_rels/data{data_num}.xml.rels'
+                
+                rels_xml = zf.read(rels_path)
+                rels_root = etree.fromstring(rels_xml)
+                
+                ns_rel = {
+                    'rel': (
+                        'http://schemas.openxmlformats.org/'
+                        'package/2006/relationships'
+                    )
+                }
+                
+                for idx, blip in enumerate(blips):
+                    r_id = blip.get(f'{{{ns["r"]}}}embed')
+                    if not r_id:
+                        continue
+                    
+                    # Resolve rId to media path
+                    for rel in rels_root.findall(
+                        './/rel:Relationship', namespaces=ns_rel
+                    ):
+                        if rel.get('Id') == r_id:
+                            target = rel.get('Target')
+                            # Target is like "../media/image1.png"
+                            media_path = target.replace('../', 'ppt/')
+                            
+                            # Extract image bytes
+                            image_bytes = zf.read(media_path)
+                            
+                            # Determine extension
+                            ext = media_path.split('.')[-1]
+                            
+                            # Save using BRIEF_01 logic
+                            shape_name = f'smartart{smartart_index}_item{idx}'
+                            saved_path = self._save_image(
+                                image_bytes,
+                                shape_name,
+                                slide_number,
+                                ext,
+                                kwargs,
+                            )
+                            
+                            if saved_path:
+                                image_paths.append(saved_path)
+                            
+                            break
+            
+        except Exception:
+            # Return partial results if error occurs
+            pass
+        
+        return image_paths
+
+    def _convert_smartart_to_markdown(
+        self,
+        texts: List[str],
+        images: List[str],
+        smartart_index: int,
+        slide_number: int,
+    ) -> str:
+        """
+        Convert SmartArt data to Markdown format.
+        
+        Type 1 (text only): Simple bulleted list
+        Type 2 (with embedded images): Two-column table
+        
+        Args:
+            texts: List of text strings from SmartArt
+            images: List of image paths (empty for Type 1)
+            smartart_index: SmartArt index for title
+            slide_number: Slide number for title
+            
+        Returns:
+            Markdown formatted string
+        """
+        if not texts:
+            return ""
+        
+        markdown = (
+            f"\n\n### SmartArt {smartart_index + 1} "
+            f"(Slide {slide_number})\n\n"
+        )
+        
+        # Type 1: Text only (simple list)
+        if not images:
+            for text in texts:
+                markdown += f"- {text}\n"
+            return markdown
+        
+        # Type 2: With embedded images (table format)
+        markdown += "| Visual | Details |\n"
+        markdown += "|--------|----------|\n"
+        
+        # Map images to texts (assume 1:1 or fewer images than texts)
+        for idx, text in enumerate(texts):
+            if idx < len(images):
+                # Has corresponding image
+                markdown += f"| ![({images[idx]}) | {text} |\n"
+            else:
+                # No image for this text
+                markdown += f"|  | {text} |\n"
+        
+        return markdown
     # --- END MODULE ---
 
     # --- MODULE: Image Extraction (BRIEF_01) ---

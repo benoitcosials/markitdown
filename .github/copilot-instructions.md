@@ -64,7 +64,7 @@ Agents spécialisés pour assistance durant le développement :
 
 ### Briefs Techniques Disponibles
 
-Trois briefs techniques détaillés sont disponibles à la racine du projet :
+Briefs techniques détaillés disponibles à la racine du projet :
 
 1. **[BRIEF_01_IMAGE_EXTRACTION.md](../BRIEF_01_IMAGE_EXTRACTION.md)** ✅ TERMINÉ (5h)
    - Fonctionnalité : Sauvegarde physique des images PPTX dans un dossier
@@ -76,10 +76,23 @@ Trois briefs techniques détaillés sont disponibles à la racine du projet :
    - Dépendance : BRIEF_01 ✅ complété
    - Format : Mode 1: alt text, Mode 2: Blocs ```image-description
    
-3. **[BRIEF_03_CHART_ASCII_ART.md](../BRIEF_03_CHART_ASCII_ART.md)** (8h) - Priorité MOYENNE
+3. **[BRIEF_03_CHART_ASCII_ART.md](../BRIEF_03_CHART_ASCII_ART.md)** 📝 DOCUMENTÉ (8h) - Priorité MOYENNE
    - Fonctionnalité : ASCII art pour charts statistiques (bar, pie, column, line)
    - Dépendance : BRIEF_01 doit être implémenté en premier
    - Format : Blocs ```ascii-chart avec caractères █ et ░
+
+4. **[BRIEF_04_IMAGE_ANNOTATIONS.md](../BRIEF_04_IMAGE_ANNOTATIONS.md)** 📝 DOCUMENTÉ
+   - Fonctionnalité : Annotations visuelles sur images (formes, texte, flèches avec LLM)
+   - Dépendance : BRIEF_01 ✅ complété
+   - Format : Descriptions enrichies pour annotations graphiques
+
+5. **[BRIEF_05_SMARTART_EXTRACTION.md](../BRIEF_05_SMARTART_EXTRACTION.md)** 🔬 RECHERCHE COMPLÉTÉE (10h) - Priorité HAUTE
+   - Fonctionnalité : Extraction texte SmartArt et conversion liste Markdown
+   - Dépendance : BRIEF_01 ✅ complété
+   - Recherche : ✅ Détection via XML URI validée, extraction ZIP + lxml faisable
+   - Limitations : ❌ SmartArt vectoriels non extractibles comme PNG, ⚠️ python-pptx sans API native
+   - Scope MVP : Extraction texte plat (hiérarchie complète = Phase 2)
+   - Format : Listes Markdown plates, tableaux conditionnel si images embarquées
 
 ### Roadmap et Processus
 
@@ -322,6 +335,23 @@ git checkout -b feat/brief-01-image-extraction
 **Objectif** : ASCII art pour charts
 
 **Prérequis** : BRIEF_01 doit être mergé dans develop
+
+### Sprint 4 : BRIEF_05 (Dépend de BRIEF_01)
+**Priorité** : 🟠 HAUTE  
+**Estimation** : 10h  
+**Objectif** : Extraction SmartArt et conversion Markdown
+
+**Prérequis** : BRIEF_01 doit être mergé dans develop
+
+**Statut Recherche** : ✅ Complétée (voir `.copilot-tracking/research/20260222-brief-05-smartart-capabilities-research.md`)
+- ✅ Détection SmartArt via XML URI validée
+- ✅ Extraction texte via ZIP + lxml faisable
+- ❌ Images SmartArt vectoriels non extractibles
+- ⚠️ python-pptx sans API native SmartArt
+
+**Scope MVP** :
+- ✅ Extraction texte plat
+- ⚠️ Hiérarchie complète (Phase 2)
 
 ## 🔧 Configuration MCP et Tests
 
