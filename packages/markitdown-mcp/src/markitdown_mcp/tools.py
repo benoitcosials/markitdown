@@ -6,18 +6,82 @@ Exposes convert_to_markdown tool for file-to-markdown conversion with
 support for multiple formats and optional image extraction.
 """
 
+import asyncio
+import concurrent.futures
+from typing import Optional
+
 from markitdown import MarkItDown
 from mcp.server.fastmcp import FastMCP
+from mcp.server import Server
 
 from .utils import (
     check_plugins_enabled,
     get_base_path_for_uri,
     resolve_image_dir_for_file_uri,
 )
-from .vision_enhancement import enhance_markdown_with_client_vision
+from .vision_enhancement import (
+    enhance_markdown_with_client_vision,
+    request_client_image_analysis,
+)
 
 # Initialize FastMCP server instance
 mcp = FastMCP("markitdown")
+
+
+# --- Helper Functions ---
+
+
+def create_llm_callback_wrapper(server: Server, max_tokens: int = 150) -> callable:
+    """
+    Create synchronous callback wrapper for async MCP image analysis.
+    
+    The MarkItDown converter is synchronous but MCP sampling is async.
+    This wrapper bridges the gap by running async code in a separate thread
+    with its own event loop, allowing the sync converter to call async MCP.
+    
+    Args:
+        server: MCP server instance for sampling requests
+        max_tokens: Maximum response length for image descriptions
+    
+    Returns:
+        Synchronous callback function: (image_bytes, prompt) -> description
+        
+    Example:
+        >>> llm_callback = create_llm_callback_wrapper(mcp_server)
+        >>> description = llm_callback(image_bytes, "Describe this image")
+    """
+    def llm_callback(image_bytes: bytes, prompt: str) -> Optional[str]:
+        """
+        Synchronous callback for image description via MCP sampling.
+        
+        Args:
+            image_bytes: Raw image data
+            prompt: Description instructions for client
+            
+        Returns:
+            Generated description or None if sampling fails
+        """
+        try:
+            # Run async function in separate thread with its own event loop
+            # This avoids "RuntimeError: asyncio.run() cannot be called from a running event loop"
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    request_client_image_analysis(
+                        server=server,
+                        image_data=image_bytes,
+                        prompt=prompt,
+                        max_tokens=max_tokens
+                    )
+                )
+                # Block until result available (with timeout to prevent hang)
+                return future.result(timeout=30)  # 30 second timeout
+        except Exception:
+            # Graceful fallback - return None to trigger next cascade level
+            return None
+    
+    return llm_callback
+
 
 # Initialize MarkItDown converter (will be instantiated per-request with plugins setting)
 # NOTE: We create a new instance per convert call to handle plugin settings dynamically
@@ -77,6 +141,16 @@ async def convert_to_markdown(
         "skip_background_images": skip_background_images,
         "skip_icon_images": skip_icon_images,
     }
+    
+    # Step 3.5: Add LLM callback for inline image descriptions via MCP sampling
+    # This enables the cascade: llm_callback → llm_caption → PIL
+    # Callback is called DURING conversion for text-only mode (SmartArt, etc.)
+    if use_client_vision:
+        llm_callback = create_llm_callback_wrapper(
+            server=mcp._mcp_server,
+            max_tokens=150
+        )
+        kwargs["llm_callback"] = llm_callback
     
     # Step 4: Perform conversion with MarkItDown
     converter = MarkItDown(enable_plugins=enable_plugins)
