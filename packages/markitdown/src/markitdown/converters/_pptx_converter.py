@@ -283,25 +283,16 @@ class PptxConverter(DocumentConverter):
                         saved_images = {}  # node_id -> saved_path
                         image_descriptions = {}  # node_id -> description
                         
-                        if node_images:
-                            if kwargs.get('output_images'):
-                                # Mode: Save images to disk
-                                saved_images = self._save_smartart_images(
-                                    file_stream,
-                                    diagram_path,
-                                    node_images,
-                                    slide_num,
-                                    smartart_count,
-                                    kwargs,
-                                )
-                            else:
-                                # Mode: Text-only - generate descriptions
-                                image_descriptions = self._describe_smartart_images(
-                                    file_stream,
-                                    diagram_path,
-                                    node_images,
-                                    kwargs,
-                                )
+                        if node_images and kwargs.get('output_images'):
+                            # Mode: Save images to disk
+                            saved_images = self._save_smartart_images(
+                                file_stream,
+                                diagram_path,
+                                node_images,
+                                slide_num,
+                                smartart_count,
+                                kwargs,
+                            )
                         
                         # Convert to Markdown
                         smartart_md = self._convert_smartart_to_markdown(
@@ -789,75 +780,6 @@ class PptxConverter(DocumentConverter):
             return match.group(0).count('.')
         return 0
 
-    # --- MODULE: Image Description Cascade (BRIEF_02) ---
-    def _describe_image(
-        self,
-        image_bytes: bytes,
-        content_type: str | None,
-        filename: str | None,
-        kwargs: dict,
-    ) -> str:
-        """
-        Generate image description using cascade: llm_callback → llm_caption.
-        
-        Cascade Priority:
-        1. llm_callback: MCP sampling via client (async converted to sync)
-        2. llm_caption: Direct OpenAI/Azure API call
-        
-        Args:
-            image_bytes: Raw image data
-            content_type: MIME type (e.g., 'image/png')
-            filename: Original filename (may be None)
-            kwargs: Converter options (llm_callback, llm_client, llm_model, llm_prompt)
-        
-        Returns:
-            Description string (empty if no LLM available)
-        """
-        # Try 1: llm_callback (MCP sampling)
-        llm_callback = kwargs.get('llm_callback')
-        if llm_callback is not None:
-            try:
-                prompt = kwargs.get('llm_prompt') or (
-                    "Describe this image briefly: object type, colors, style."
-                )
-                description = llm_callback(image_bytes, prompt)
-                if description:
-                    return description
-            except Exception:
-                pass
-        
-        # Try 2: llm_caption (direct OpenAI API)
-        llm_client = kwargs.get('llm_client')
-        llm_model = kwargs.get('llm_model')
-        if llm_client is not None and llm_model is not None:
-            try:
-                extension = None
-                if filename:
-                    extension = os.path.splitext(filename)[1]
-                
-                stream_info = StreamInfo(
-                    mimetype=content_type,
-                    extension=extension,
-                    filename=filename,
-                )
-                image_stream = io.BytesIO(image_bytes)
-                
-                description = llm_caption(
-                    image_stream,
-                    stream_info,
-                    client=llm_client,
-                    model=llm_model,
-                    prompt=kwargs.get('llm_prompt'),
-                )
-                if description:
-                    return description
-            except Exception:
-                pass
-        
-        # No LLM available
-        return ""
-    # --- END MODULE ---
-
     def _save_smartart_images(
         self,
         pptx_stream: BinaryIO,
@@ -970,94 +892,6 @@ class PptxConverter(DocumentConverter):
             pass
         
         return saved_paths
-
-    def _describe_smartart_images(
-        self,
-        pptx_stream: BinaryIO,
-        diagram_path: str,
-        node_images: dict[str, str],
-        kwargs: dict,
-    ) -> dict[str, str]:
-        """
-        Generate descriptions for SmartArt images without saving to disk.
-        
-        Used in text-only mode to provide LLM/PIL descriptions of embedded
-        images that would otherwise be lost.
-        
-        Args:
-            pptx_stream: PPTX file as binary stream
-            diagram_path: Path within ZIP like "ppt/diagrams/data1.xml"
-            node_images: Dict mapping node_id -> rId for images
-            kwargs: Converter options (llm_callback, llm_client, llm_model, etc.)
-            
-        Returns:
-            Dict mapping node_id -> description string
-        """
-        descriptions = {}
-        
-        if not node_images:
-            return descriptions
-        
-        try:
-            pptx_stream.seek(0)
-            
-            with zipfile.ZipFile(pptx_stream, 'r') as zf:
-                # Parse relationship file for diagram
-                data_num = diagram_path.split('data')[-1].split('.')[0]
-                rels_path = f'ppt/diagrams/_rels/data{data_num}.xml.rels'
-                
-                try:
-                    rels_xml = zf.read(rels_path)
-                except KeyError:
-                    return descriptions
-                
-                rels_root = etree.fromstring(rels_xml)
-                
-                ns_rel = {
-                    'rel': (
-                        'http://schemas.openxmlformats.org/'
-                        'package/2006/relationships'
-                    )
-                }
-                
-                # Build rId -> media_path mapping
-                rid_to_path = {}
-                for rel in rels_root.findall(
-                    './/rel:Relationship', namespaces=ns_rel
-                ):
-                    rel_id = rel.get('Id')
-                    target = rel.get('Target')
-                    if rel_id and target:
-                        media_path = target.replace('../', 'ppt/')
-                        rid_to_path[rel_id] = media_path
-                
-                # Generate description for each image
-                for node_id, r_id in node_images.items():
-                    if r_id not in rid_to_path:
-                        continue
-                    
-                    media_path = rid_to_path[r_id]
-                    
-                    try:
-                        image_bytes = zf.read(media_path)
-                    except KeyError:
-                        continue
-                    
-                    # Determine content type from extension
-                    ext = media_path.split('.')[-1].lower()
-                    content_type = f'image/{ext}'
-                    filename = os.path.basename(media_path)
-                    
-                    # Generate description using cascade
-                    description = self._describe_image(
-                        image_bytes, content_type, filename, kwargs
-                    )
-                    descriptions[node_id] = description
-            
-        except Exception:
-            pass
-        
-        return descriptions
 
     def _convert_smartart_to_markdown(
         self,
