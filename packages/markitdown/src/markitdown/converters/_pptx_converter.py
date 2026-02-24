@@ -403,7 +403,7 @@ class PptxConverter(DocumentConverter):
                 pptx.enum.shapes.PP_PLACEHOLDER_TYPE.SLIDE_IMAGE   # ID 101
             ]
             return pf.type in background_types
-        except:
+        except Exception:
             # If unable to determine, assume it's not a background
             return False
     # --- END MODULE ---
@@ -552,13 +552,18 @@ class PptxConverter(DocumentConverter):
 
     def _extract_smartart_text(
         self, pptx_stream: BinaryIO, diagram_path: str
-    ) -> tuple[List[tuple[str, int, str]], dict[str, str]]:
+    ) -> tuple[List[tuple[str, int, str, bool]], dict[str, str]]:
         """
         Extract text nodes from SmartArt with hierarchy and image associations.
         
-        Reads data{N}.xml, extracts <dgm:pt> nodes, determines hierarchy
-        using <dgm:cxn> connections with srcOrd for ordering, and links
-        images from PRES nodes to DATA nodes via presAssocID.
+        Algorithm:
+        1. Extract all nodes (text, IDs, types) and images via presAssocID
+        2. Build parent-child graph from connections (no type attr)
+        3. Detect assistant connections (type="asst") for orgcharts
+        4. Find root nodes (no incoming connections)
+        5. Calculate depths via BFS from all roots
+        6. Sort children by srcOrd + destOrd
+        7. Traverse recursively with cycle detection
         
         Args:
             pptx_stream: PPTX file as binary stream
@@ -566,7 +571,7 @@ class PptxConverter(DocumentConverter):
             
         Returns:
             Tuple of:
-              - List of tuples (text, level, node_id) for hierarchy with IDs
+              - List of tuples (text, level, node_id, is_assistant)
               - Dict mapping node_id -> image_rid for nodes with images
         """
         nodes_with_text = []
@@ -599,18 +604,16 @@ class PptxConverter(DocumentConverter):
                 node_texts = {}  # modelId -> text
                 node_types = {}  # modelId -> type (doc, parTrans, sibTrans, pres)
                 data_node_ids = set()  # All DATA node IDs
-                doc_node_id = None
+                all_node_ids = set()  # All node IDs for root detection
                 
                 for pt in points:
                     model_id = pt.get('modelId')
                     if not model_id:
                         continue
                     
+                    all_node_ids.add(model_id)
                     pt_type = pt.get('type')
                     node_types[model_id] = pt_type
-                    
-                    if pt_type == 'doc':
-                        doc_node_id = model_id
                     
                     # Extract text (only for data nodes)
                     if pt_type in (None, 'node'):  # Normal data nodes
@@ -628,7 +631,6 @@ class PptxConverter(DocumentConverter):
                         if prset is not None:
                             pres_assoc = prset.get('presAssocID')
                             if pres_assoc and pres_assoc in data_node_ids:
-                                # Look for embedded image
                                 blip = pt.find('.//a:blip', namespaces=ns)
                                 if blip is not None:
                                     r_embed = f'{{{ns["r"]}}}embed'
@@ -636,7 +638,7 @@ class PptxConverter(DocumentConverter):
                                     if r_id:
                                         node_images[pres_assoc] = r_id
                 
-                # Second pass for PRES nodes (data nodes may come before)
+                # Second pass for PRES nodes (data nodes may come after)
                 for pt in points:
                     pt_type = pt.get('type')
                     if pt_type == 'pres':
@@ -652,67 +654,127 @@ class PptxConverter(DocumentConverter):
                                         if r_id:
                                             node_images[pres_assoc] = r_id
                 
-                # Build children map: parent_id -> [(srcOrd, child_id), ...]
+                # Build children and assistants maps from connections
                 connections = root.findall('.//dgm:cxn', namespaces=ns)
-                children_map = {}  # parent_id -> list of (order, child_id)
+                children_map = {}  # parent_id -> [(srcOrd, destOrd, child_id)]
+                assistants_map = {}  # parent_id -> [(srcOrd, destOrd, asst_id)]
+                dest_nodes = set()  # All nodes with incoming connections
                 
                 for cxn in connections:
                     cxn_type = cxn.get('type')
+                    src_id = cxn.get('srcId')
+                    dest_id = cxn.get('destId')
+                    
+                    if not src_id or not dest_id:
+                        continue
+                    
+                    try:
+                        src_ord = int(cxn.get('srcOrd', 0))
+                        dest_ord = int(cxn.get('destOrd', 0))
+                    except ValueError:
+                        src_ord, dest_ord = 0, 0
+                    
+                    # Skip transition nodes as children
+                    child_type = node_types.get(dest_id)
+                    if child_type in ('parTrans', 'sibTrans', 'pres'):
+                        continue
+                    
                     # Data hierarchy = connections WITHOUT type attribute
                     if cxn_type is None:
-                        src_id = cxn.get('srcId')   # Parent
-                        dest_id = cxn.get('destId')  # Child
-                        src_ord = cxn.get('srcOrd', '0')
-                        
-                        if src_id and dest_id:
-                            # Skip transition nodes as children
-                            child_type = node_types.get(dest_id)
-                            if child_type in ('parTrans', 'sibTrans', 'pres'):
-                                continue
-                            
-                            if src_id not in children_map:
-                                children_map[src_id] = []
-                            try:
-                                order = int(src_ord)
-                            except ValueError:
-                                order = 0
-                            children_map[src_id].append((order, dest_id))
+                        if src_id not in children_map:
+                            children_map[src_id] = []
+                        children_map[src_id].append((src_ord, dest_ord, dest_id))
+                        dest_nodes.add(dest_id)
+                    
+                    # Assistant relationships (orgcharts)
+                    elif cxn_type == 'asst':
+                        if src_id not in assistants_map:
+                            assistants_map[src_id] = []
+                        assistants_map[src_id].append((src_ord, dest_ord, dest_id))
+                        dest_nodes.add(dest_id)
                 
-                # Sort children by order
+                # Sort children by srcOrd, then destOrd
                 for parent_id in children_map:
-                    children_map[parent_id].sort(key=lambda x: x[0])
+                    children_map[parent_id].sort(key=lambda x: (x[0], x[1]))
+                for parent_id in assistants_map:
+                    assistants_map[parent_id].sort(key=lambda x: (x[0], x[1]))
                 
-                # Track current node ID for image association
-                node_order = []  # [(node_id, text, level), ...]
+                # Find root nodes (nodes NOT in dest_nodes)
+                root_nodes = [
+                    nid for nid in all_node_ids
+                    if nid not in dest_nodes
+                ]
                 
-                # Traverse tree recursively starting from doc node
-                def traverse(node_id: str, level: int):
-                    """Traverse tree, collecting text nodes with levels."""
-                    # Add this node if it has text (or empty for image-only)
+                # Calculate depths using BFS from all roots
+                depths = {}
+                queue = [(rnode, 0) for rnode in root_nodes]
+                
+                while queue:
+                    node_id, depth = queue.pop(0)
+                    
+                    # Multi-parent case: use max depth
+                    if node_id in depths:
+                        depths[node_id] = max(depths[node_id], depth)
+                    else:
+                        depths[node_id] = depth
+                    
+                    # Add children to queue
+                    for _, _, child_id in children_map.get(node_id, []):
+                        queue.append((child_id, depth + 1))
+                    
+                    # Add assistants to queue
+                    for _, _, asst_id in assistants_map.get(node_id, []):
+                        queue.append((asst_id, depth + 1))
+                
+                # Build set of assistant node IDs
+                assistant_node_ids = set()
+                for asst_list in assistants_map.values():
+                    for _, _, asst_id in asst_list:
+                        assistant_node_ids.add(asst_id)
+                
+                # Recursive traversal with cycle detection
+                def traverse(
+                    node_id: str, level: int, visited: set | None = None
+                ):
+                    """Traverse tree collecting text nodes with levels."""
+                    if visited is None:
+                        visited = set()
+                    
+                    # Cycle detection
+                    if node_id in visited:
+                        return
+                    visited.add(node_id)
+                    
+                    # Add this node if it has text or image
                     if node_id in node_texts:
-                        node_order.append((node_id, node_texts[node_id], level))
+                        is_asst = node_id in assistant_node_ids
+                        nodes_with_text.append((
+                            node_texts[node_id], level, node_id, is_asst
+                        ))
                     elif node_id in node_images:
-                        # Node has image but no text - add with empty text
-                        node_order.append((node_id, '', level))
+                        is_asst = node_id in assistant_node_ids
+                        nodes_with_text.append(('', level, node_id, is_asst))
+                    
+                    # Process assistants BEFORE regular children
+                    for _, _, asst_id in assistants_map.get(node_id, []):
+                        asst_level = depths.get(asst_id, level + 1)
+                        traverse(asst_id, asst_level, visited.copy())
                     
                     # Process children in order
-                    if node_id in children_map:
-                        for _, child_id in children_map[node_id]:
-                            # Children of doc = level 0, their children = level 1
-                            child_level = level if node_id == doc_node_id else level + 1
-                            traverse(child_id, child_level)
+                    for _, _, child_id in children_map.get(node_id, []):
+                        child_level = depths.get(child_id, level + 1)
+                        traverse(child_id, child_level, visited.copy())
                 
-                if doc_node_id:
-                    traverse(doc_node_id, 0)
-                elif node_texts:
-                    # Fallback: no doc node, use text-based heuristic
+                # Start traversal from all root nodes
+                for root_node in root_nodes:
+                    root_level = depths.get(root_node, 0)
+                    traverse(root_node, root_level)
+                
+                # Fallback if nothing found but texts exist
+                if not nodes_with_text and node_texts:
                     for model_id, text in node_texts.items():
                         level = self._infer_level_from_text(text)
-                        node_order.append((model_id, text, level))
-                
-                # Convert to output format (text, level, node_id)
-                for node_id, text, level in node_order:
-                    nodes_with_text.append((text, level, node_id))
+                        nodes_with_text.append((text, level, model_id, False))
             
         except Exception:
             pass
@@ -736,12 +798,11 @@ class PptxConverter(DocumentConverter):
         kwargs: dict,
     ) -> str:
         """
-        Generate image description using cascade: llm_callback → llm_caption → PIL.
+        Generate image description using cascade: llm_callback → llm_caption.
         
         Cascade Priority:
         1. llm_callback: MCP sampling via client (async converted to sync)
         2. llm_caption: Direct OpenAI/Azure API call
-        3. PIL: Basic analysis (dimensions, format, dominant color)
         
         Args:
             image_bytes: Raw image data
@@ -750,7 +811,7 @@ class PptxConverter(DocumentConverter):
             kwargs: Converter options (llm_callback, llm_client, llm_model, llm_prompt)
         
         Returns:
-            Description string (never empty - PIL fallback always works)
+            Description string (empty if no LLM available)
         """
         # Try 1: llm_callback (MCP sampling)
         llm_callback = kwargs.get('llm_callback')
@@ -793,119 +854,8 @@ class PptxConverter(DocumentConverter):
             except Exception:
                 pass
         
-        # Try 3: PIL fallback (basic image analysis)
-        return self._describe_image_with_pil(image_bytes, content_type)
-    
-    def _describe_image_with_pil(
-        self,
-        image_bytes: bytes,
-        content_type: str | None,
-    ) -> str:
-        """
-        Basic image description using PIL (fallback when no LLM available).
-        
-        Extracts: format, dimensions, and dominant color.
-        
-        Args:
-            image_bytes: Raw image data
-            content_type: MIME type hint
-        
-        Returns:
-            Description like "PNG image (400x300), dominant color: blue"
-        """
-        try:
-            from PIL import Image
-            
-            img = Image.open(io.BytesIO(image_bytes))
-            width, height = img.size
-            img_format = img.format or 'Unknown'
-            
-            # Extract dominant color
-            dominant_color = self._get_dominant_color(img)
-            
-            return (
-                f"{img_format} image ({width}x{height}), "
-                f"dominant color: {dominant_color}"
-            )
-        except ImportError:
-            # PIL not installed
-            ext = ''
-            if content_type:
-                ext = content_type.split('/')[-1].upper()
-            return f"{ext or 'Unknown'} image"
-        except Exception:
-            return "Image (analysis failed)"
-    
-    def _get_dominant_color(self, img) -> str:
-        """
-        Extract dominant color name from PIL Image.
-        
-        Uses color quantization to find most common color,
-        then maps RGB to human-readable color name.
-        """
-        try:
-            # Resize for faster processing
-            small = img.copy()
-            small.thumbnail((50, 50))
-            
-            # Convert to RGB if needed
-            if small.mode != 'RGB':
-                small = small.convert('RGB')
-            
-            # Get colors (reduce to 5 colors)
-            colors = small.getcolors(maxcolors=2500)
-            if not colors:
-                return "multicolor"
-            
-            # Find most common color
-            colors.sort(key=lambda x: x[0], reverse=True)
-            count, (r, g, b) = colors[0]
-            
-            # Map RGB to color name
-            return self._rgb_to_color_name(r, g, b)
-        except Exception:
-            return "unknown"
-    
-    def _rgb_to_color_name(self, r: int, g: int, b: int) -> str:
-        """Map RGB values to basic color name."""
-        # Calculate brightness and saturation
-        max_c = max(r, g, b)
-        min_c = min(r, g, b)
-        
-        # Grayscale detection
-        if max_c - min_c < 30:
-            if max_c < 50:
-                return "black"
-            elif max_c > 200:
-                return "white"
-            else:
-                return "gray"
-        
-        # Color detection based on dominant channel
-        if r > g and r > b:
-            if r > 200 and g < 100 and b < 100:
-                return "red"
-            elif r > 200 and g > 150:
-                return "orange"
-            elif r > 200 and b > 150:
-                return "pink"
-            return "red"
-        elif g > r and g > b:
-            if g > 200 and r < 100 and b < 100:
-                return "green"
-            elif g > 200 and r > 200:
-                return "yellow"
-            return "green"
-        elif b > r and b > g:
-            if b > 200 and r < 100 and g < 100:
-                return "blue"
-            elif b > 200 and r > 150:
-                return "purple"
-            elif b > 200 and g > 150:
-                return "cyan"
-            return "blue"
-        
-        return "multicolor"
+        # No LLM available
+        return ""
     # --- END MODULE ---
 
     def _save_smartart_images(
@@ -1111,7 +1061,7 @@ class PptxConverter(DocumentConverter):
 
     def _convert_smartart_to_markdown(
         self,
-        texts: List[tuple[str, int, str]],
+        texts: List[tuple[str, int, str, bool]],
         saved_images: dict[str, str],
         smartart_index: int,
         slide_number: int,
@@ -1125,7 +1075,7 @@ class PptxConverter(DocumentConverter):
         Type 2 (with saved images): Table with Visual | Details
         
         Args:
-            texts: List of tuples (text, level, node_id) from SmartArt
+            texts: List of tuples (text, level, node_id, is_assistant)
             saved_images: Dict mapping node_id -> saved_path (empty for Type 1)
             smartart_index: SmartArt index for HTML comment
             slide_number: Slide number for HTML comment
@@ -1145,45 +1095,53 @@ class PptxConverter(DocumentConverter):
         
         # Type 1: Text only without descriptions (simple hierarchical list)
         if not saved_images and not image_descriptions:
-            for text, level, _ in texts:
+            for text, level, _, is_assistant in texts:
                 if not text:  # Skip empty text nodes
                     continue
                 # Indentation: 3 spaces per level (Markdown standard)
                 indent = '   ' * level
-                markdown += f"{indent}- {text}\n"
+                # Assistants: no bullet, just indented text
+                if is_assistant:
+                    markdown += f"{indent}{text}\n"
+                else:
+                    markdown += f"{indent}- {text}\n"
             # Add blank line after
             markdown += "\n"
             return markdown
         
         # Type 1b or Type 2: Table format (with descriptions or images)
         # Group items by level-0 nodes (each level-0 starts a new group)
-        groups = []  # [(image_or_desc, [(text, level), ...]), ...]
+        groups = []  # [(image_or_desc, node_id, [(text, level, is_asst), ...]), ...]
         current_group = None
         
-        for text, level, node_id in texts:
+        for text, level, node_id, is_assistant in texts:
             if level == 0:
                 # Start new group - prefer saved_images, fallback to descriptions
                 if saved_images:
                     img_or_desc = saved_images.get(node_id, '')
                 else:
                     img_or_desc = image_descriptions.get(node_id, '') if image_descriptions else ''
-                current_group = (img_or_desc, node_id, [(text, 0)])
+                current_group = (img_or_desc, node_id, [(text, 0, is_assistant)])
                 groups.append(current_group)
             elif current_group is not None:
                 # Add to current group as child
-                current_group[2].append((text, level))
+                current_group[2].append((text, level, is_assistant))
         
         # Build rows first to calculate column widths
         rows = []
         for img_or_desc, node_id, items in groups:
             # Build hierarchical text with HTML line breaks
             details_parts = []
-            for item_text, item_level in items:
+            for item_text, item_level, is_asst in items:
                 if not item_text:  # Skip empty text
                     continue
                 # Indent: use non-breaking spaces for table cell
                 indent = '&nbsp;&nbsp;&nbsp;' * item_level
-                details_parts.append(f"{indent}- {item_text}")
+                # Assistants without bullet
+                if is_asst:
+                    details_parts.append(f"{indent}{item_text}")
+                else:
+                    details_parts.append(f"{indent}- {item_text}")
             
             details = '<br>'.join(details_parts) if details_parts else ''
             
