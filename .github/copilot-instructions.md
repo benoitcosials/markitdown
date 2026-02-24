@@ -15,6 +15,38 @@ Vous travaillez sur **markitdown**, un projet Microsoft Python pour convertir di
 - **NE PAS développer dans** : Claude Desktop, Claude Web, ou autres environnements
 - **Workflow MCP** : Tests uniquement, développement dans VS Code
 
+## 🔒 Règles de Permissions (OBLIGATOIRE)
+
+**⚠️ CRITIQUE : L'Agent DOIT respecter ces règles strictement !**
+
+### Zones Autorisées (modifications libres)
+
+L'Agent peut créer/modifier des fichiers **SANS permission** uniquement dans :
+
+| Dossier | Usage |
+|---------|-------|
+| `.copilot-tracking/` | Recherche, plans, scripts, tests, fichiers temporaires |
+| `.github/` | Instructions, agents, documentation workflow |
+
+### Zones Protégées (permission requise)
+
+**TOUTE modification hors des zones autorisées nécessite une permission explicite de l'utilisateur :**
+
+- ❌ `packages/` - Code source du projet
+- ❌ Racine du projet (`/`) - Fichiers de configuration
+- ❌ `images/` - Assets du projet
+- ❌ Tout autre dossier
+
+**Avant de modifier une zone protégée, l'Agent DOIT :**
+1. Décrire la modification proposée
+2. Attendre la confirmation de l'utilisateur
+3. Ne procéder qu'après approbation explicite
+
+### Exceptions
+
+- Les commits Git sont autorisés après implémentation approuvée
+- Les commandes de lecture (`git status`, `ls`, `cat`) sont toujours autorisées
+
 ## 🎓 Instructions & Agents de Qualité
 
 ### Instructions Python Disponibles
@@ -40,64 +72,34 @@ Agents spécialisés pour assistance durant le développement :
 1. **[python-expert.agent.md](.github/agents/python-expert.agent.md)** 🤖
    - Expert Python 3.10+ avec focus sur qualité et architecture
    - Type hints, async/await, best practices
-   - Spécialisé pour BRIEF_02 (LLM image descriptions adaptatives)
    - Utilisation : `@workspace utilise #file:python-expert.agent.md pour [tâche]`
 
 2. **[markitdown-orchestrator.agent.md](.github/agents/markitdown-orchestrator.agent.md)** 🎯
    - Orchestrateur master pour workflow complet
    - Gère recherche, planification, implémentation, tests
-   - Utilisation : `@workspace utilise #file:markitdown-orchestrator.agent.md pour commencer BRIEF_XX`
-
-### 🚀 Commandes Recommandées pour BRIEF_02
-
-**Avec Python Expert** :
-```
-@workspace utilise #file:python-expert.agent.md pour implémenter BRIEF_02
-```
-
-**Avec Orchestrateur** (workflow complet automatique) :
-```
-@workspace utilise #file:markitdown-orchestrator.agent.md pour commencer BRIEF_02
-```
+   - Utilisation : `@workspace utilise #file:markitdown-orchestrator.agent.md pour commencer [feature]`
 
 ## 📋 Documents de Planification
 
-### Briefs Techniques Disponibles
+### Fonctionnalités Implémentées
 
-Briefs techniques détaillés disponibles à la racine du projet :
+**Fonctionnalités actuellement disponibles dans `develop` :**
 
-1. **[BRIEF_01_IMAGE_EXTRACTION.md](../BRIEF_01_IMAGE_EXTRACTION.md)** ✅ TERMINÉ (5h)
-   - Fonctionnalité : Sauvegarde physique des images PPTX dans un dossier
-   - Fichier cible : `packages/markitdown/src/markitdown/converters/_pptx_converter.py`
-   - Résultat : Images extraites correctement, alt text vides si absents du PPTX
-   
-2. **[BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md](../BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md)** 🚧 EN COURS (8h)
-   - Fonctionnalité : Descriptions LLM adaptatives (Mode 1: alt text enrichi, Mode 2: descriptions complètes)
-   - Dépendance : BRIEF_01 ✅ complété
-   - Format : Mode 1: alt text, Mode 2: Blocs ```image-description
-   
-3. **[BRIEF_03_CHART_ASCII_ART.md](../BRIEF_03_CHART_ASCII_ART.md)** 📝 DOCUMENTÉ (8h) - Priorité MOYENNE
-   - Fonctionnalité : ASCII art pour charts statistiques (bar, pie, column, line)
-   - Dépendance : BRIEF_01 doit être implémenté en premier
-   - Format : Blocs ```ascii-chart avec caractères █ et ░
+1. **Image Extraction** ✅ TERMINÉ
+   - Sauvegarde physique des images PPTX dans un dossier
+   - Fichier : `packages/markitdown/src/markitdown/converters/_pptx_converter.py`
+   - Options : `output_images`, `image_dir`, `skip_background_images`, `skip_icon_images`
 
-4. **[BRIEF_04_IMAGE_ANNOTATIONS.md](../BRIEF_04_IMAGE_ANNOTATIONS.md)** 📝 DOCUMENTÉ
-   - Fonctionnalité : Annotations visuelles sur images (formes, texte, flèches avec LLM)
-   - Dépendance : BRIEF_01 ✅ complété
-   - Format : Descriptions enrichies pour annotations graphiques
-
-5. **[BRIEF_05_SMARTART_EXTRACTION.md](../BRIEF_05_SMARTART_EXTRACTION.md)** 🔬 RECHERCHE COMPLÉTÉE (10h) - Priorité HAUTE
-   - Fonctionnalité : Extraction texte SmartArt et conversion liste Markdown
-   - Dépendance : BRIEF_01 ✅ complété
-   - Recherche : ✅ Détection via XML URI validée, extraction ZIP + lxml faisable
-   - Limitations : ❌ SmartArt vectoriels non extractibles comme PNG, ⚠️ python-pptx sans API native
-   - Scope MVP : Extraction texte plat (hiérarchie complète = Phase 2)
-   - Format : Listes Markdown plates, tableaux conditionnel si images embarquées
+2. **SmartArt Extraction** ✅ TERMINÉ (Phase 1)
+   - Extraction texte SmartArt avec hiérarchie BFS
+   - Support des assistants (organigrammes)
+   - Détection de cycles
+   - Association images ↔ nœuds via presAssocID
 
 ### Roadmap et Processus
 
-- **[MON_ROADMAP.md](../MON_ROADMAP.md)** : Vision globale des 10+ fonctionnalités planifiées
-- **[MON_PROCESS_DE_CONTRIBUTION.md](../MON_PROCESS_DE_CONTRIBUTION.md)** : Guide complet du workflow Git et déploiement
+- **[MON_ROADMAP.md](MON_ROADMAP.md)** : Vision globale des 10+ fonctionnalités planifiées
+- **[MON_PROCESS_DE_CONTRIBUTION.md](MON_PROCESS_DE_CONTRIBUTION.md)** : Guide complet du workflow Git et déploiement
 
 ## 🤖 Workflow d'Implémentation Autonome Recommandé
 
@@ -174,25 +176,57 @@ L'orchestrateur gère automatiquement les 3 phases + Git + tests + merge !
 .copilot-tracking/
 ├── research/
 │   ├── 20260210-brief-01-image-extraction-research.md
-│   ├── 20260210-brief-02-image-descriptions-research.md
-│   └── 20260210-brief-03-chart-ascii-research.md
+│   └── ...
 ├── plans/
 │   ├── 20260210-brief-01-image-extraction-plan.instructions.md
-│   ├── 20260210-brief-02-image-descriptions-plan.instructions.md
-│   └── 20260210-brief-03-chart-ascii-plan.instructions.md
+│   └── ...
 ├── details/
 │   ├── 20260210-brief-01-image-extraction-details.md
-│   ├── 20260210-brief-02-image-descriptions-details.md
-│   └── 20260210-brief-03-chart-ascii-details.md
+│   └── ...
 ├── prompts/
 │   ├── implement-brief-01-image-extraction.prompt.md
-│   ├── implement-brief-02-image-descriptions.prompt.md
-│   └── implement-brief-03-chart-ascii.prompt.md
-└── changes/
-    ├── 20260210-brief-01-image-extraction-changes.md
-    ├── 20260210-brief-02-image-descriptions-changes.md
-    └── 20260210-brief-03-chart-ascii-changes.md
+│   └── ...
+├── changes/
+│   ├── 20260210-brief-01-image-extraction-changes.md
+│   └── ...
+├── tests/
+│   └── pptx/           # Fichiers PPTX de test
+│       ├── presentation-sample.pptx
+│       └── ...
+├── scripts/            # Scripts de debug/analyse temporaires
+│   ├── debug_smartart.py
+│   └── ...
+└── temp/               # Fichiers temporaires divers
+    └── ...
 ```
+
+### 📁 Règle d'Isolation du Projet
+
+**⚠️ CRITIQUE : Ne pas polluer l'arborescence du projet !**
+
+Tout fichier temporaire créé par l'agent doit être stocké dans `.copilot-tracking/` :
+
+| Type de fichier | Emplacement |
+|-----------------|-------------|
+| Documentation de recherche | `.copilot-tracking/research/` |
+| Plans d'implémentation | `.copilot-tracking/plans/` |
+| Détails techniques | `.copilot-tracking/details/` |
+| Prompts générés | `.copilot-tracking/prompts/` |
+| Logs de changements | `.copilot-tracking/changes/` |
+| **Fichiers de test (PPTX, etc.)** | `.copilot-tracking/tests/` |
+| **Scripts de debug/analyse** | `.copilot-tracking/scripts/` |
+| **Fichiers temporaires** | `.copilot-tracking/temp/` |
+| **Versions extraites (comparaison)** | `.copilot-tracking/versions/` |
+
+**Interdit à la racine du projet :**
+- ❌ Scripts de debug (`debug_*.py`, `test_*.py` hors `packages/*/tests/`)
+- ❌ Fichiers PPTX/DOCX de test
+- ❌ Documentation temporaire
+- ❌ Résultats de conversion (utiliser `pptx-result/` si nécessaire pour tests manuels)
+
+**Seuls fichiers autorisés à la racine :**
+- ✅ `README.md`, `LICENSE`, `SECURITY.md`, etc. (documentation officielle)
+- ✅ Fichiers de configuration (`.gitignore`, `pyproject.toml`, etc.)
 
 ## 🌳 Stratégie Git
 
@@ -300,58 +334,32 @@ pytest tests/ --cov=src/markitdown
 - ✅ Pas d'erreurs dans `get_errors` VS Code
 - ✅ Documentation/commentaires à jour
 
-## 🚀 Ordre d'Implémentation Recommandé
+## 🚀 État du Développement
 
-### Sprint 1 : BRIEF_01 (Critique)
-**Priorité** : 🔴 CRITIQUE  
-**Estimation** : 5h  
-**Objectif** : Corriger le bug des images cassées
+### Fonctionnalités Complétées
 
-**Commandes** :
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Image Extraction | ✅ TERMINÉ | Sauvegarde images PPTX vers dossier |
+| SmartArt Phase 1 | ✅ TERMINÉ | Extraction texte avec hiérarchie BFS |
+
+### Workflow pour Nouvelles Fonctionnalités
+
+Pour développer une nouvelle fonctionnalité :
+
 ```bash
+# 1. Créer une branche feature depuis develop
 git checkout develop
-git checkout -b feat/brief-01-image-extraction
+git checkout -b feat/[nom-feature]
 
-# Phase 1 : Recherche
-@workspace utilise #file:task-researcher.agent.md pour BRIEF_01
+# 2. Utiliser l'orchestrateur pour le workflow complet
+@workspace utilise #file:markitdown-orchestrator.agent.md pour commencer [description]
 
-# Phase 2 : Planification
-@workspace utilise #file:task-planner.agent.md pour BRIEF_01
-
-# Phase 3 : Implémentation
-@workspace utilise #file:python-expert.agent.md pour implémenter BRIEF_01
+# 3. Après implémentation et tests, merger dans develop
+git checkout develop
+git merge feat/[nom-feature]
+git push origin develop
 ```
-
-### Sprint 2 : BRIEF_02 (Dépend de BRIEF_01)
-**Priorité** : 🟡 MOYENNE  
-**Estimation** : 4h  
-**Objectif** : Descriptions LLM pour images
-
-**Prérequis** : BRIEF_01 doit être mergé dans develop
-
-### Sprint 3 : BRIEF_03 (Dépend de BRIEF_01)
-**Priorité** : 🟡 MOYENNE  
-**Estimation** : 8h  
-**Objectif** : ASCII art pour charts
-
-**Prérequis** : BRIEF_01 doit être mergé dans develop
-
-### Sprint 4 : BRIEF_05 (Dépend de BRIEF_01)
-**Priorité** : 🟠 HAUTE  
-**Estimation** : 10h  
-**Objectif** : Extraction SmartArt et conversion Markdown
-
-**Prérequis** : BRIEF_01 doit être mergé dans develop
-
-**Statut Recherche** : ✅ Complétée (voir `.copilot-tracking/research/20260222-brief-05-smartart-capabilities-research.md`)
-- ✅ Détection SmartArt via XML URI validée
-- ✅ Extraction texte via ZIP + lxml faisable
-- ❌ Images SmartArt vectoriels non extractibles
-- ⚠️ python-pptx sans API native SmartArt
-
-**Scope MVP** :
-- ✅ Extraction texte plat
-- ⚠️ Hiérarchie complète (Phase 2)
 
 ## 🔧 Configuration MCP et Tests
 
@@ -436,13 +444,6 @@ git log --oneline -5
 @workspace utilise #file:task-researcher.agent.md pour [tâche]
 @workspace utilise #file:task-planner.agent.md pour [tâche]
 @workspace utilise #file:python-expert.agent.md pour implémenter [tâche]
-```
-
-### Ouvrir un Brief
-```
-@workspace ouvre BRIEF_01_IMAGE_EXTRACTION.md
-@workspace ouvre BRIEF_02_IMAGE_TEXT_DESCRIPTIONS.md
-@workspace ouvre BRIEF_03_CHART_ASCII_ART.md
 ```
 
 ---
