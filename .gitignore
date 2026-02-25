@@ -1,6 +1,9 @@
 # Test results - do NOT commit
 pptx-result/
 
+# Copilot tracking - research, plans, temp files
+.copilot-tracking/
+
 # Temporary test folders
 test_default/
 test_explicit_false/

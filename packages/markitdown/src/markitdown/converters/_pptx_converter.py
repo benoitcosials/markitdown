@@ -1,6 +1,5 @@
 import base64
 import hashlib  # For MD5 deduplication
-import html
 import io
 import os
 import re
@@ -42,6 +41,54 @@ ACCEPTED_MIME_TYPE_PREFIXES = [
 ]
 
 ACCEPTED_FILE_EXTENSIONS = [".pptx"]
+
+# --- MODULE: Color Mapping for Table Cells ---
+# Maps RGB tuples to (emoji, french_name)
+# Using Unicode colored square emojis where available
+COLOR_MAP = {
+    # Primary colors
+    (255, 0, 0): ("🔴", "rouge"),
+    (0, 255, 0): ("🟢", "vert"),
+    (0, 128, 0): ("🟢", "vert"),  # Dark green
+    (0, 0, 255): ("🔵", "bleu"),
+    # Secondary colors
+    (255, 255, 0): ("🟡", "jaune"),
+    (255, 165, 0): ("🟠", "orange"),
+    (255, 127, 0): ("🟠", "orange"),
+    (128, 0, 128): ("🟣", "violet"),
+    (255, 0, 255): ("🟣", "magenta"),
+    # Neutrals
+    (0, 0, 0): ("⚫", "noir"),
+    (255, 255, 255): ("⚪", "blanc"),
+    (128, 128, 128): ("⚫", "gris"),
+    (165, 42, 42): ("🟤", "marron"),
+    (139, 69, 19): ("🟤", "marron"),
+    # Common PowerPoint theme colors
+    (146, 208, 80): ("🟢", "vert clair"),  # Light green
+    (0, 176, 80): ("🟢", "vert"),  # Green
+    (0, 176, 240): ("🔵", "bleu clair"),  # Light blue
+    (0, 112, 192): ("🔵", "bleu"),  # Blue
+    (255, 192, 0): ("🟡", "jaune"),  # Gold/Yellow
+}
+
+# Reference colors for proximity matching (subset for efficiency)
+COLOR_REFERENCES = [
+    ((255, 0, 0), "🔴", "rouge"),
+    ((0, 255, 0), "🟢", "vert"),
+    ((0, 128, 0), "🟢", "vert foncé"),
+    ((0, 0, 255), "🔵", "bleu"),
+    ((255, 255, 0), "🟡", "jaune"),
+    ((255, 165, 0), "🟠", "orange"),
+    ((128, 0, 128), "🟣", "violet"),
+    ((255, 0, 255), "🟣", "magenta"),
+    ((0, 0, 0), "⚫", "noir"),
+    ((255, 255, 255), "⚪", "blanc"),
+    ((128, 128, 128), "⚫", "gris"),
+    ((165, 42, 42), "🟤", "marron"),
+    ((0, 255, 255), "🔵", "cyan"),
+    ((255, 192, 203), "🔴", "rose"),
+]
+# --- END MODULE ---
 
 
 class PptxConverter(DocumentConverter):
@@ -146,206 +193,234 @@ class PptxConverter(DocumentConverter):
         md_content = ""
         slide_num = 0
         smartart_count = 0  # Global counter for all SmartArt (BRIEF_05)
+        table_count = 0  # Global counter for all tables
         
         for slide in presentation.slides:
             slide_num += 1
-
             md_content += f"\n\n<!-- Slide number: {slide_num} -->\n"
-
-            title = slide.shapes.title
-
-            def get_shape_content(shape, **kwargs):
-                nonlocal md_content
-                nonlocal image_count  # For sequential image naming
-                nonlocal smartart_count  # For sequential SmartArt naming (BRIEF_05)
-                nonlocal file_stream  # For SmartArt ZIP access (BRIEF_05)
-                # Pictures
-                if self._is_picture(shape):
-                    # --- MODULE: Skip Background Images (BRIEF_01) ---
-                    if skip_background_images and self._is_background_image(shape):
-                        return  # Skip this background image
-                    # --- END MODULE ---
-                    
-                    # --- MODULE: Skip Icon Images (Extract Photos Only) ---
-                    if skip_icon_images:
-                        image_type = self._classify_image_type(shape)
-                        if image_type == 'icon':
-                            return  # Skip icon, only extract photos
-                    # --- END MODULE ---
-                    # https://github.com/scanny/python-pptx/pull/512#issuecomment-1713100069
-
-                    llm_description = ""
-                    alt_text = ""
-
-                    # Potentially generate a description using an LLM
-                    llm_client = kwargs.get("llm_client")
-                    llm_model = kwargs.get("llm_model")
-                    if llm_client is not None and llm_model is not None:
-                        # Prepare a file_stream and stream_info for the image data
-                        image_filename = shape.image.filename
-                        image_extension = None
-                        if image_filename:
-                            image_extension = os.path.splitext(image_filename)[1]
-                        image_stream_info = StreamInfo(
-                            mimetype=shape.image.content_type,
-                            extension=image_extension,
-                            filename=image_filename,
-                        )
-
-                        image_stream = io.BytesIO(shape.image.blob)
-
-                        # Caption the image
-                        try:
-                            llm_description = llm_caption(
-                                image_stream,
-                                image_stream_info,
-                                client=llm_client,
-                                model=llm_model,
-                                prompt=kwargs.get("llm_prompt"),
-                            )
-                        except Exception:
-                            # Unable to generate a description
-                            pass
-
-                    # Also grab any description embedded in the deck
-                    try:
-                        alt_text = shape._element._nvXxPr.cNvPr.attrib.get("descr", "")
-                    except Exception:
-                        # Unable to get alt text
-                        pass
-
-                    # Prepare the alt, escaping any special characters
-                    # Note: If alt_text is empty, it will remain empty (BRIEF_02 will handle LLM generation)
-                    alt_text = "\n".join(filter(None, [llm_description, alt_text]))
-                    alt_text = re.sub(r"[\r\n\[\]]", " ", alt_text)
-                    alt_text = re.sub(r"\s+", " ", alt_text).strip()
-
-                    # --- MODULE: Image Handling (BRIEF_01) ---
-                    # Mode Base64 (PRESERVE EXISTING - DO NOT MODIFY)
-                    if kwargs.get("keep_data_uris", False):
-                        blob = shape.image.blob
-                        content_type = shape.image.content_type or "image/png"
-                        b64_string = base64.b64encode(blob).decode("utf-8")
-                        md_content += f"\n![{alt_text}](data:{content_type};base64,{b64_string})\n"
-                    
-                    # New: File extraction mode
-                    elif output_images:
-                        # Save image to disk
-                        image_path, deduplicated = self._save_image(
-                            shape, 
-                            slide_num, 
-                            image_count, 
-                            image_dir
-                        )
-                        
-                        # URL-encode path for markdown (handles any remaining special chars)
-                        encoded_path = quote(image_path, safe='/')
-                        
-                        # Generate Markdown with URL-encoded path
-                        md_content += f"\n![{alt_text}]({encoded_path})\n"
-                        
-                        # Increment counter if new image (not deduplicated)
-                        if not deduplicated:
-                            image_count += 1
-                    
-                    # Legacy mode (deprecated - generates broken links)
-                    else:
-                        # A placeholder name
-                        filename = re.sub(r"\W", "", shape.name) + ".jpg"
-                        md_content += "\n![" + alt_text + "](" + filename + ")\n"
-                    # --- END MODULE ---
-
-                # Tables
-                if self._is_table(shape):
-                    md_content += self._convert_table_to_markdown(shape.table, **kwargs)
-
-                # --- MODULE: SmartArt Extraction (BRIEF_05) ---
-                # SmartArt (must check before charts/text)
-                if self._is_smartart(shape):
-                    if not LXML_AVAILABLE:
-                        # Skip if lxml not installed
-                        return
-                    
-                    nonlocal smartart_count
-                    
-                    # Find diagram data file
-                    diagram_path = self._get_smartart_diagram_path(
-                        file_stream, slide_num - 1, shape
-                    )
-                    
-                    if diagram_path:
-                        # Extract text nodes and image associations
-                        texts, node_images = self._extract_smartart_text(
-                            file_stream, diagram_path
-                        )
-                        
-                        # Initialize outputs
-                        saved_images = {}  # node_id -> saved_path
-                        image_descriptions = {}  # node_id -> description
-                        
-                        if node_images and kwargs.get('output_images'):
-                            # Mode: Save images to disk
-                            saved_images = self._save_smartart_images(
-                                file_stream,
-                                diagram_path,
-                                node_images,
-                                slide_num,
-                                smartart_count,
-                                kwargs,
-                            )
-                        
-                        # Convert to Markdown
-                        smartart_md = self._convert_smartart_to_markdown(
-                            texts,
-                            saved_images,
-                            smartart_count,
-                            slide_num,
-                            image_descriptions,
-                        )
-                        
-                        if smartart_md:
-                            md_content += smartart_md
-                            smartart_count += 1
-                    
-                    return  # Don't process as regular shape
-                # --- END MODULE ---
-
-                # Charts
-                if shape.has_chart:
-                    md_content += self._convert_chart_to_markdown(shape.chart)
-
-                # Text areas
-                elif shape.has_text_frame:
-                    if shape == title:
-                        md_content += "# " + shape.text.lstrip() + "\n"
-                    else:
-                        md_content += shape.text + "\n"
-
-                # Group Shapes
-                if shape.shape_type == pptx.enum.shapes.MSO_SHAPE_TYPE.GROUP:
-                    sorted_shapes = sorted(
-                        shape.shapes,
-                        key=lambda x: (
-                            float("-inf") if not x.top else x.top,
-                            float("-inf") if not x.left else x.left,
-                        ),
-                    )
-                    for subshape in sorted_shapes:
-                        get_shape_content(subshape, **kwargs)
-
-            # --- MODULE: Image counter per slide (BRIEF_01) ---
-            image_count = 0
-            # --- END MODULE ---
             
-            sorted_shapes = sorted(
-                slide.shapes,
-                key=lambda x: (
-                    float("-inf") if not x.top else x.top,
-                    float("-inf") if not x.left else x.left,
-                ),
+            # Reset per-slide counters
+            image_count = 0
+            
+            # === PHASE 1: Classify all shapes ===
+            title_shape = slide.shapes.title
+            table_shapes = []
+            smartart_shapes = []
+            picture_shapes = []
+            text_shapes = []
+            chart_shapes = []
+            group_shapes = []
+            
+            for shape in slide.shapes:
+                if self._is_table(shape):
+                    table_shapes.append(shape)
+                elif self._is_smartart(shape):
+                    smartart_shapes.append(shape)
+                elif self._is_picture(shape):
+                    picture_shapes.append(shape)
+                elif shape.has_chart:
+                    chart_shapes.append(shape)
+                elif shape.shape_type == pptx.enum.shapes.MSO_SHAPE_TYPE.GROUP:
+                    group_shapes.append(shape)
+                elif shape.has_text_frame and shape != title_shape:
+                    text_shapes.append(shape)
+            
+            # === PHASE 2: Associate floating images with tables ===
+            # Maps picture shape id -> table shape it belongs to
+            image_to_table: dict[int, object] = {}
+            
+            for table_shape in table_shapes:
+                for img_shape in picture_shapes:
+                    img_cx = img_shape.left + img_shape.width // 2
+                    img_cy = img_shape.top + img_shape.height // 2
+                    in_x = table_shape.left <= img_cx <= table_shape.left + table_shape.width
+                    in_y = table_shape.top <= img_cy <= table_shape.top + table_shape.height
+                    if in_x and in_y:
+                        image_to_table[id(img_shape)] = table_shape
+            
+            # Orphan images = not associated with any table
+            orphan_pictures = [p for p in picture_shapes if id(p) not in image_to_table]
+            
+            # === PHASE 3: Process in logical order ===
+            
+            # 3.1 Title
+            if title_shape and title_shape.has_text_frame:
+                md_content += "# " + title_shape.text.lstrip() + "\n"
+            
+            # 3.2 Text shapes (non-title) - sorted by position
+            sorted_text = sorted(
+                text_shapes,
+                key=lambda x: (x.top or 0, x.left or 0),
             )
-            for shape in sorted_shapes:
-                get_shape_content(shape, **kwargs)
+            for shape in sorted_text:
+                md_content += shape.text + "\n"
+            
+            # 3.3 Tables (with their floating images included)
+            sorted_tables = sorted(
+                table_shapes,
+                key=lambda x: (x.top or 0, x.left or 0),
+            )
+            for table_shape in sorted_tables:
+                # Filter kwargs to avoid duplicate argument errors
+                table_kwargs = {k: v for k, v in kwargs.items() 
+                               if k not in ('output_images', 'image_dir')}
+                md_content += self._convert_table_to_markdown(
+                    table_shape.table,
+                    slide_num=slide_num,
+                    table_idx=table_count,
+                    pptx_stream=file_stream,
+                    image_dir=image_dir,
+                    output_images=output_images,
+                    table_shape=table_shape,
+                    slide_shapes=list(slide.shapes),
+                    **table_kwargs,
+                )
+                table_count += 1
+            
+            # 3.4 SmartArt
+            for shape in smartart_shapes:
+                if not LXML_AVAILABLE:
+                    continue
+                
+                diagram_path = self._get_smartart_diagram_path(
+                    file_stream, slide_num - 1, shape
+                )
+                
+                if diagram_path:
+                    texts, node_images = self._extract_smartart_text(
+                        file_stream, diagram_path
+                    )
+                    
+                    saved_images = {}
+                    image_descriptions = {}
+                    
+                    if node_images and kwargs.get('output_images'):
+                        saved_images = self._save_smartart_images(
+                            file_stream,
+                            diagram_path,
+                            node_images,
+                            slide_num,
+                            smartart_count,
+                            kwargs,
+                        )
+                    
+                    smartart_md = self._convert_smartart_to_markdown(
+                        texts,
+                        saved_images,
+                        smartart_count,
+                        slide_num,
+                        image_descriptions,
+                    )
+                    
+                    if smartart_md:
+                        md_content += smartart_md
+                        smartart_count += 1
+            
+            # 3.5 Charts
+            for shape in chart_shapes:
+                md_content += self._convert_chart_to_markdown(shape.chart)
+            
+            # 3.6 Orphan images (not in tables)
+            sorted_pictures = sorted(
+                orphan_pictures,
+                key=lambda x: (x.top or 0, x.left or 0),
+            )
+            for shape in sorted_pictures:
+                # Skip background/icon images if configured
+                if skip_background_images and self._is_background_image(shape):
+                    continue
+                if skip_icon_images and self._classify_image_type(shape) == 'icon':
+                    continue
+                
+                # Get alt text and LLM description
+                llm_description = ""
+                alt_text = ""
+                
+                llm_client = kwargs.get("llm_client")
+                llm_model = kwargs.get("llm_model")
+                if llm_client is not None and llm_model is not None:
+                    image_filename = shape.image.filename
+                    image_extension = os.path.splitext(image_filename)[1] if image_filename else None
+                    image_stream_info = StreamInfo(
+                        mimetype=shape.image.content_type,
+                        extension=image_extension,
+                        filename=image_filename,
+                    )
+                    image_stream = io.BytesIO(shape.image.blob)
+                    try:
+                        llm_description = llm_caption(
+                            image_stream,
+                            image_stream_info,
+                            client=llm_client,
+                            model=llm_model,
+                            prompt=kwargs.get("llm_prompt"),
+                        )
+                    except Exception:
+                        pass
+                
+                try:
+                    alt_text = shape._element._nvXxPr.cNvPr.attrib.get("descr", "")
+                except Exception:
+                    pass
+                
+                alt_text = "\n".join(filter(None, [llm_description, alt_text]))
+                alt_text = re.sub(r"[\r\n\[\]]", " ", alt_text)
+                alt_text = re.sub(r"\s+", " ", alt_text).strip()
+                
+                # Output image
+                if kwargs.get("keep_data_uris", False):
+                    blob = shape.image.blob
+                    content_type = shape.image.content_type or "image/png"
+                    b64_string = base64.b64encode(blob).decode("utf-8")
+                    md_content += f"\n![{alt_text}](data:{content_type};base64,{b64_string})\n"
+                elif output_images:
+                    image_path, deduplicated = self._save_image(
+                        shape, slide_num, image_count, image_dir
+                    )
+                    encoded_path = quote(image_path, safe='/')
+                    md_content += f"\n![{alt_text}]({encoded_path})\n"
+                    if not deduplicated:
+                        image_count += 1
+                else:
+                    filename = re.sub(r"\W", "", shape.name) + ".jpg"
+                    md_content += "\n![" + alt_text + "](" + filename + ")\n"
+            
+            # 3.7 Group shapes (recursive processing)
+            def process_group(group_shape):
+                nonlocal md_content, image_count
+                sorted_subshapes = sorted(
+                    group_shape.shapes,
+                    key=lambda x: (x.top or 0, x.left or 0),
+                )
+                for subshape in sorted_subshapes:
+                    if subshape.shape_type == pptx.enum.shapes.MSO_SHAPE_TYPE.GROUP:
+                        process_group(subshape)
+                    elif self._is_picture(subshape):
+                        if skip_background_images and self._is_background_image(subshape):
+                            continue
+                        if skip_icon_images and self._classify_image_type(subshape) == 'icon':
+                            continue
+                        
+                        alt_text = ""
+                        try:
+                            alt_text = subshape._element._nvXxPr.cNvPr.attrib.get("descr", "")
+                        except Exception:
+                            pass
+                        alt_text = re.sub(r"[\r\n\[\]]", " ", alt_text).strip()
+                        
+                        if output_images:
+                            image_path, deduplicated = self._save_image(
+                                subshape, slide_num, image_count, image_dir
+                            )
+                            encoded_path = quote(image_path, safe='/')
+                            md_content += f"\n![{alt_text}]({encoded_path})\n"
+                            if not deduplicated:
+                                image_count += 1
+                    elif subshape.has_text_frame:
+                        md_content += subshape.text + "\n"
+            
+            for group_shape in group_shapes:
+                process_group(group_shape)
 
             md_content = md_content.strip()
 
@@ -1165,25 +1240,537 @@ class PptxConverter(DocumentConverter):
         return image_path, False
     # --- END MODULE ---
 
-    def _convert_table_to_markdown(self, table, **kwargs):
-        # Write the table as HTML, then convert it to Markdown
-        html_table = "<html><body><table>"
-        first_row = True
-        for row in table.rows:
-            html_table += "<tr>"
-            for cell in row.cells:
-                if first_row:
-                    html_table += "<th>" + html.escape(cell.text) + "</th>"
-                else:
-                    html_table += "<td>" + html.escape(cell.text) + "</td>"
-            html_table += "</tr>"
-            first_row = False
-        html_table += "</table></body></html>"
+    # --- MODULE: Table Cell Color Extraction ---
+    def _rgb_to_hsl(self, r: int, g: int, b: int) -> tuple[float, float, float]:
+        """
+        Convert RGB (0-255) to HSL (hue 0-360, saturation 0-1, lightness 0-1).
+        """
+        r_norm, g_norm, b_norm = r / 255.0, g / 255.0, b / 255.0
+        max_c = max(r_norm, g_norm, b_norm)
+        min_c = min(r_norm, g_norm, b_norm)
+        delta = max_c - min_c
+        
+        # Lightness
+        lightness = (max_c + min_c) / 2.0
+        
+        # Saturation
+        if delta == 0:
+            saturation = 0.0
+            hue = 0.0
+        else:
+            saturation = delta / (1 - abs(2 * lightness - 1))
+            
+            # Hue
+            if max_c == r_norm:
+                hue = 60 * (((g_norm - b_norm) / delta) % 6)
+            elif max_c == g_norm:
+                hue = 60 * (((b_norm - r_norm) / delta) + 2)
+            else:
+                hue = 60 * (((r_norm - g_norm) / delta) + 4)
+        
+        return (hue, saturation, lightness)
+    
+    def _rgb_to_color_name(self, r: int, g: int, b: int) -> tuple[str, str] | None:
+        """
+        Convert RGB values to color emoji and French name using HSL matching.
+        
+        Uses Hue for color identification and Saturation to filter neutrals.
+        Low saturation colors (grays) are ignored as they're typically styling.
+        
+        Args:
+            r, g, b: RGB values (0-255)
+            
+        Returns:
+            Tuple of (emoji, french_name) or None if neutral/gray
+        """
+        rgb_tuple = (r, g, b)
+        
+        # Exact match first
+        if rgb_tuple in COLOR_MAP:
+            emoji, name = COLOR_MAP[rgb_tuple]
+            # Still filter out grays from exact matches
+            return (emoji, name)
+        
+        # Convert to HSL
+        hue, saturation, lightness = self._rgb_to_hsl(r, g, b)
+        
+        # Handle neutrals: low saturation = gray/white/black
+        if saturation < 0.15:
+            if lightness < 0.2:
+                return ("⚫", "noir")
+            elif lightness > 0.85:
+                return ("⚪", "blanc")
+            else:
+                return ("⬜", "gris")
+        
+        # Filter very dark or very light (near black/white)
+        if lightness < 0.1:
+            return ("⚫", "noir")
+        if lightness > 0.9:
+            return ("⚪", "blanc")
+        
+        # Match by hue ranges (degrees on color wheel)
+        # Red: 0-15 or 345-360
+        # Orange: 15-45
+        # Yellow: 45-75
+        # Green: 75-165
+        # Cyan: 165-195
+        # Blue: 195-255
+        # Purple: 255-285
+        # Magenta: 285-345
+        
+        if hue < 15 or hue >= 345:
+            return ("🔴", "rouge")
+        elif hue < 45:
+            return ("🟠", "orange")
+        elif hue < 75:
+            return ("🟡", "jaune")
+        elif hue < 165:
+            return ("🟢", "vert")
+        elif hue < 195:
+            return ("🔵", "cyan")
+        elif hue < 255:
+            return ("🔵", "bleu")
+        elif hue < 285:
+            return ("🟣", "violet")
+        else:
+            return ("🟣", "magenta")
 
-        return (
-            self._html_converter.convert_string(html_table, **kwargs).markdown.strip()
-            + "\n"
-        )
+    def _get_cell_fill_color(self, cell) -> tuple[str, str] | None:
+        """
+        Extract fill color from a table cell.
+        
+        Args:
+            cell: python-pptx _Cell object
+            
+        Returns:
+            Tuple of (emoji, french_name) or None if no fill/transparent
+        """
+        try:
+            fill = cell.fill
+            
+            # Check if fill is defined and solid
+            if fill is None:
+                return None
+            
+            fill_type = fill.type
+            if fill_type is None:
+                return None
+            
+            # MSO_FILL_TYPE.SOLID = 1
+            if fill_type != pptx.enum.dml.MSO_FILL_TYPE.SOLID:
+                return None
+            
+            # Get foreground color
+            fore_color = fill.fore_color
+            if fore_color is None:
+                return None
+            
+            color_type = fore_color.type
+            
+            # Handle RGB color
+            if color_type == pptx.dml.color.MSO_COLOR_TYPE.RGB:
+                rgb = fore_color.rgb
+                if rgb:
+                    return self._rgb_to_color_name(rgb[0], rgb[1], rgb[2])
+            
+            # Handle theme color (try to get RGB value)
+            elif color_type == pptx.dml.color.MSO_COLOR_TYPE.SCHEME:
+                # Theme colors need resolution via presentation theme
+                # For now, return a generic indicator
+                theme_idx = fore_color.theme_color
+                if theme_idx is not None:
+                    # Map common theme color indices
+                    theme_names = {
+                        1: ("⚫", "texte foncé"),
+                        2: ("⚪", "arrière-plan"),
+                        3: ("🔵", "accent 1"),
+                        4: ("🔴", "accent 2"),
+                        5: ("🟢", "accent 3"),
+                        6: ("🟣", "accent 4"),
+                        7: ("🟠", "accent 5"),
+                        8: ("🔵", "accent 6"),
+                    }
+                    return theme_names.get(theme_idx, ("⬜", "thème"))
+            
+            return None
+            
+        except (AttributeError, TypeError):
+            return None
+    
+    def _get_cell_images(
+        self,
+        cell,
+        pptx_stream: BinaryIO,
+        slide_num: int,
+        table_idx: int,
+        row_idx: int,
+        col_idx: int,
+        image_dir: str,
+    ) -> list[str]:
+        """
+        Extract images from a table cell's background fill.
+        
+        Parses the cell's XML to find a:blipFill elements, resolves
+        the relationship IDs to actual media files, and saves them.
+        
+        Args:
+            cell: python-pptx _Cell object
+            pptx_stream: PPTX file as binary stream
+            slide_num: 1-indexed slide number
+            table_idx: 0-indexed table index within slide
+            row_idx: 0-indexed row index
+            col_idx: 0-indexed column index
+            image_dir: Directory to save images
+            
+        Returns:
+            List of markdown image references like "![](path/to/image.png)"
+        """
+        if not LXML_AVAILABLE:
+            return []
+        
+        image_refs = []
+        
+        try:
+            # Access the cell's XML element
+            tc_element = cell._tc
+            if tc_element is None:
+                return []
+            
+            # Define namespaces
+            ns = {
+                'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
+                'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+            }
+            
+            # Find all blip elements (images) in cell properties
+            # Look in tcPr for blipFill
+            blips = tc_element.findall('.//a:blip', namespaces=ns)
+            
+            if not blips:
+                return []
+            
+            # Reset stream position
+            pptx_stream.seek(0)
+            
+            with zipfile.ZipFile(pptx_stream, 'r') as zf:
+                # We need the slide's relationship file to resolve rIds
+                # Table images are part of the slide's relationships
+                rels_path = f'ppt/slides/_rels/slide{slide_num}.xml.rels'
+                
+                try:
+                    rels_xml = zf.read(rels_path)
+                except KeyError:
+                    return []
+                
+                rels_root = etree.fromstring(rels_xml)
+                
+                ns_rel = 'http://schemas.openxmlformats.org/package/2006/relationships'
+                
+                # Build rId -> media_path mapping
+                rid_to_path = {}
+                for rel in rels_root.findall(f'.//{{{ns_rel}}}Relationship'):
+                    rel_id = rel.get('Id')
+                    target = rel.get('Target')
+                    if rel_id and target and 'media/' in target:
+                        media_path = target.replace('../', 'ppt/')
+                        if not media_path.startswith('ppt/'):
+                            media_path = 'ppt/slides/' + target
+                            media_path = media_path.replace('../', '')
+                        rid_to_path[rel_id] = media_path
+                
+                # Process each blip (image reference)
+                for img_idx, blip in enumerate(blips):
+                    r_embed = blip.get(f'{{{ns["r"]}}}embed')
+                    if not r_embed or r_embed not in rid_to_path:
+                        continue
+                    
+                    media_path = rid_to_path[r_embed]
+                    
+                    try:
+                        image_bytes = zf.read(media_path)
+                    except KeyError:
+                        continue
+                    
+                    # Deduplication using MD5 hash
+                    image_hash = hashlib.md5(image_bytes).hexdigest()
+                    if image_hash in self._image_hashes:
+                        saved_path = self._image_hashes[image_hash]
+                        image_refs.append(f"![]({saved_path})")
+                        continue
+                    
+                    # Determine extension
+                    ext = '.' + media_path.split('.')[-1].lower()
+                    
+                    # Generate filename
+                    img_filename = (
+                        f"slide{slide_num}_table{table_idx}_"
+                        f"cell{row_idx}x{col_idx}_img{img_idx}{ext}"
+                    )
+                    
+                    # Build paths
+                    img_path_obj = Path(image_dir) / img_filename
+                    img_path = img_path_obj.as_posix()
+                    disk_path = str(img_path_obj)
+                    
+                    # Create directory and save
+                    os.makedirs(image_dir, exist_ok=True)
+                    with open(disk_path, 'wb') as f:
+                        f.write(image_bytes)
+                    
+                    # Register in hash map
+                    self._image_hashes[image_hash] = img_path
+                    image_refs.append(f"![]({img_path})")
+            
+        except Exception:
+            pass
+        
+        return image_refs
+    # --- END MODULE ---
+
+    # --- MODULE: Floating Image to Cell Mapping ---
+    def _map_floating_images_to_cells(
+        self,
+        table_shape,
+        slide_shapes: list,
+        pptx_stream: BinaryIO | None,
+        slide_num: int,
+        table_idx: int,
+        image_dir: str,
+    ) -> dict[tuple[int, int], list[str]]:
+        """
+        Map floating PICTURE shapes to table cells based on position.
+        
+        PowerPoint allows placing images visually over tables without
+        embedding them in cells. This function detects such images and
+        maps them to the appropriate cell based on geometric overlap.
+        
+        Args:
+            table_shape: The table shape object (has .left, .top, .width, .height)
+            slide_shapes: All shapes on the slide
+            pptx_stream: PPTX file stream for image extraction
+            slide_num: 1-indexed slide number
+            table_idx: 0-indexed table index
+            image_dir: Directory to save extracted images
+            
+        Returns:
+            Dict mapping (row_idx, col_idx) to list of markdown image refs
+        """
+        cell_images: dict[tuple[int, int], list[str]] = {}
+        
+        if pptx_stream is None:
+            return cell_images
+        
+        table = table_shape.table
+        
+        # Calculate column positions
+        col_positions = [table_shape.left]
+        for col in table.columns:
+            col_positions.append(col_positions[-1] + col.width)
+        
+        # Calculate row positions
+        row_positions = [table_shape.top]
+        for row in table.rows:
+            row_positions.append(row_positions[-1] + row.height)
+        
+        # Find PICTURE shapes overlapping the table
+        for shape in slide_shapes:
+            if shape.shape_type != pptx.enum.shapes.MSO_SHAPE_TYPE.PICTURE:
+                continue
+            
+            # Use center of image for cell mapping
+            img_center_x = shape.left + shape.width // 2
+            img_center_y = shape.top + shape.height // 2
+            
+            # Check if within table bounds
+            if not (table_shape.left <= img_center_x <= table_shape.left + table_shape.width):
+                continue
+            if not (table_shape.top <= img_center_y <= table_shape.top + table_shape.height):
+                continue
+            
+            # Find column index
+            col_idx = None
+            for i in range(len(col_positions) - 1):
+                if col_positions[i] <= img_center_x < col_positions[i + 1]:
+                    col_idx = i
+                    break
+            
+            # Find row index
+            row_idx = None
+            for i in range(len(row_positions) - 1):
+                if row_positions[i] <= img_center_y < row_positions[i + 1]:
+                    row_idx = i
+                    break
+            
+            if row_idx is None or col_idx is None:
+                continue
+            
+            # Extract and save the image
+            try:
+                if hasattr(shape, 'image') and shape.image:
+                    image_bytes = shape.image.blob
+                    ext = shape.image.ext or 'png'
+                    
+                    # Generate unique filename
+                    img_name = f"slide{slide_num}_table{table_idx}_cell{row_idx}_{col_idx}"
+                    
+                    # Check for duplicate
+                    image_hash = hashlib.md5(image_bytes).hexdigest()
+                    if image_hash in self._image_hashes:
+                        img_path = self._image_hashes[image_hash]
+                    else:
+                        img_path = f"{image_dir}/{img_name}.{ext}"
+                        disk_path = img_path
+                        
+                        os.makedirs(image_dir, exist_ok=True)
+                        with open(disk_path, 'wb') as f:
+                            f.write(image_bytes)
+                        
+                        self._image_hashes[image_hash] = img_path
+                    
+                    # Use alt text if available
+                    alt_text = shape.name or ""
+                    
+                    # Add to cell mapping
+                    key = (row_idx, col_idx)
+                    if key not in cell_images:
+                        cell_images[key] = []
+                    cell_images[key].append(f"![{alt_text}]({img_path})")
+            except Exception:
+                pass
+        
+        return cell_images
+    # --- END MODULE ---
+
+    def _convert_table_to_markdown(
+        self,
+        table,
+        slide_num: int = 0,
+        table_idx: int = 0,
+        pptx_stream: BinaryIO | None = None,
+        image_dir: str = "images",
+        output_images: bool = True,
+        table_shape=None,
+        slide_shapes: list | None = None,
+        **kwargs,
+    ) -> str:
+        """
+        Convert PPTX table to Markdown with enhanced cell content.
+        
+        Handles 4 types of cell content:
+        1. Text → Markdown text
+        2. Empty cell with color → Emoji or "(couleur)"
+        3. Cell with embedded image(s) → Extracted image references
+        4. Floating images over cells → Detected and inserted
+        
+        When both text and color are present, displays both: "Texte 🟢"
+        Header rows (when table.first_row=True) are excluded from color extraction.
+        
+        Args:
+            table: python-pptx Table object
+            slide_num: 1-indexed slide number (for image naming)
+            table_idx: 0-indexed table index within slide
+            pptx_stream: PPTX file as binary stream (for image extraction)
+            image_dir: Directory to save extracted images
+            output_images: Whether to extract images
+            table_shape: The table shape object (for floating image detection)
+            slide_shapes: All shapes on the slide (for floating image detection)
+            **kwargs: Additional converter options
+            
+        Returns:
+            Markdown formatted table string
+        """
+        rows_data = []
+        num_cols = len(table.columns)
+        
+        # Check if table has header row styling enabled
+        has_header_row = getattr(table, 'first_row', False)
+        
+        # Map floating images to cells (images placed visually over the table)
+        floating_images: dict[tuple[int, int], list[str]] = {}
+        if output_images and table_shape and slide_shapes and pptx_stream:
+            floating_images = self._map_floating_images_to_cells(
+                table_shape,
+                slide_shapes,
+                pptx_stream,
+                slide_num,
+                table_idx,
+                image_dir,
+            )
+        
+        for row_idx, row in enumerate(table.rows):
+            row_cells = []
+            is_header = has_header_row and row_idx == 0
+            
+            for col_idx, cell in enumerate(row.cells):
+                # Skip spanned cells (part of a merge)
+                if hasattr(cell, 'is_spanned') and cell.is_spanned:
+                    continue
+                
+                cell_parts = []
+                
+                # 1. Extract text
+                text = cell.text.strip() if cell.text else ""
+                if text:
+                    # Escape pipe characters for Markdown table
+                    text = text.replace("|", "\\|")
+                    # Replace newlines with <br> for table cell
+                    text = text.replace("\n", "<br>")
+                    cell_parts.append(text)
+                
+                # 2. Extract embedded images (blipFill in cell XML)
+                if output_images and pptx_stream is not None:
+                    images = self._get_cell_images(
+                        cell,
+                        pptx_stream,
+                        slide_num,
+                        table_idx,
+                        row_idx,
+                        col_idx,
+                        image_dir,
+                    )
+                    cell_parts.extend(images)
+                
+                # 3. Add floating images mapped to this cell
+                if (row_idx, col_idx) in floating_images:
+                    cell_parts.extend(floating_images[(row_idx, col_idx)])
+                
+                # 4. Extract color (skip for header rows - styling only)
+                if not is_header:
+                    color_info = self._get_cell_fill_color(cell)
+                    if color_info:
+                        emoji, color_name = color_info
+                        cell_parts.append(emoji)
+                
+                # Combine all parts
+                cell_content = " ".join(cell_parts) if cell_parts else ""
+                row_cells.append(cell_content)
+            
+            # Ensure row has correct number of columns
+            while len(row_cells) < num_cols:
+                row_cells.append("")
+            
+            rows_data.append(row_cells)
+        
+        if not rows_data:
+            return ""
+        
+        # Build Markdown table
+        md_lines = []
+        
+        # Header row
+        header = "| " + " | ".join(rows_data[0]) + " |"
+        md_lines.append(header)
+        
+        # Separator row
+        separator = "|" + "|".join(["---"] * num_cols) + "|"
+        md_lines.append(separator)
+        
+        # Data rows
+        for row in rows_data[1:]:
+            md_lines.append("| " + " | ".join(row) + " |")
+        
+        return "\n".join(md_lines) + "\n"
 
     def _convert_chart_to_markdown(self, chart):
         try:
