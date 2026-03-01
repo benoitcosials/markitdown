@@ -131,6 +131,548 @@ class PptxConverter(DocumentConverter):
         text = text.strip('_')
         return text
 
+    # --- MODULE: UTF-8 Text Normalization (BRIEF_06) ---
+    def _to_utf8(self, text: str | bytes) -> str:
+        """
+        Convert text to normalized UTF-8.
+        
+        Handles encoding detection for bytes and normalizes unicode
+        characters (typographic quotes, non-breaking spaces, etc.).
+        
+        Args:
+            text: String or bytes to normalize
+            
+        Returns:
+            str: UTF-8 normalized string (NFKC form)
+        """
+        if isinstance(text, bytes):
+            # Try charset detection first
+            try:
+                from charset_normalizer import from_bytes
+                result = from_bytes(text).best()
+                if result:
+                    text = str(result)
+                else:
+                    text = text.decode('utf-8', errors='replace')
+            except ImportError:
+                # Fallback: try common encodings
+                for enc in ['utf-8', 'cp1252', 'iso-8859-1', 'latin-1']:
+                    try:
+                        text = text.decode(enc)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                else:
+                    text = text.decode('utf-8', errors='replace')
+        
+        # Normalize unicode to NFKC (compatibility decomposition + composition)
+        text = unicodedata.normalize('NFKC', text)
+        
+        # Replace typographic characters with ASCII equivalents
+        replacements = {
+            '\u2019': "'",  # Right single quote → apostrophe
+            '\u2018': "'",  # Left single quote → apostrophe
+            '\u201C': '"',  # Left double quote
+            '\u201D': '"',  # Right double quote
+            '\u00A0': ' ',  # Non-breaking space
+            '\u2013': '-',  # En dash
+            '\u2014': '-',  # Em dash
+            '\u2026': '...',  # Ellipsis
+            '\x0b': ' ',  # Vertical tab → space
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        
+        return text
+
+    def _format_paragraph_text(self, para) -> str:
+        """
+        Format paragraph text with markdown styles and hyperlinks.
+        
+        Processes runs and merges consecutive runs with identical styles
+        before applying markdown formatting:
+        - Bold: **text**
+        - Italic: *text*
+        - Strikethrough: ~~text~~
+        - Underline: <u>text</u>
+        - Hyperlinks: [text](url)
+        
+        Args:
+            para: Paragraph object from text_frame.paragraphs
+            
+        Returns:
+            Formatted markdown string with styles and links
+        """
+        if not para.runs:
+            return self._to_utf8(para.text)
+        
+        # Collect runs with their style signature
+        # Format: (text, bold, italic, strikethrough, underline, hyperlink_url)
+        styled_runs = []
+        for run in para.runs:
+            text = self._to_utf8(run.text)
+            if not text:
+                continue
+            
+            font = run.font
+            bold = bool(font.bold)
+            italic = bool(font.italic)
+            strikethrough = bool(getattr(font, 'strikethrough', None))
+            underline = bool(font.underline)
+            
+            hyperlink_url = None
+            if run.hyperlink and run.hyperlink.address:
+                url = run.hyperlink.address
+                if not url.startswith('slide'):
+                    hyperlink_url = url
+            
+            styled_runs.append((text, bold, italic, strikethrough, underline, hyperlink_url))
+        
+        if not styled_runs:
+            return self._to_utf8(para.text)
+        
+        # Merge consecutive runs with identical styles
+        merged_runs = []
+        current_text = styled_runs[0][0]
+        current_style = styled_runs[0][1:]
+        
+        for i in range(1, len(styled_runs)):
+            text, *style = styled_runs[i]
+            style = tuple(style)
+            if style == current_style:
+                current_text += text
+            else:
+                merged_runs.append((current_text, *current_style))
+                current_text = text
+                current_style = style
+        merged_runs.append((current_text, *current_style))
+        
+        # Apply markdown formatting to each merged run
+        parts = []
+        for text, bold, italic, strikethrough, underline, hyperlink_url in merged_runs:
+            # Extract leading/trailing whitespace to place outside style markers
+            stripped = text.strip()
+            if not stripped:
+                # Text is only whitespace, keep as-is
+                parts.append(text)
+                continue
+            
+            leading_space = text[:len(text) - len(text.lstrip())]
+            trailing_space = text[len(text.rstrip()):]
+            text = stripped
+            
+            # Apply styles to stripped text
+            if italic:
+                text = f"*{text}*"
+            if bold:
+                text = f"**{text}**"
+            if strikethrough:
+                text = f"~~{text}~~"
+            if underline:
+                text = f"<u>{text}</u>"
+            if hyperlink_url:
+                text = f"[{text}]({hyperlink_url})"
+            
+            # Re-add whitespace outside the markers
+            parts.append(f"{leading_space}{text}{trailing_space}")
+        
+        return ''.join(parts)
+
+    def _format_cell_text(self, cell) -> str:
+        """
+        Format table cell text with markdown styles and hyperlinks.
+        
+        Processes all paragraphs in the cell and joins them with <br>.
+        Each paragraph is processed with _format_paragraph_text().
+        
+        Args:
+            cell: Table cell object
+            
+        Returns:
+            Formatted markdown string for table cell
+        """
+        if not hasattr(cell, 'text_frame'):
+            text = self._to_utf8(cell.text.strip()) if cell.text else ""
+            return text.replace("|", "\\|").replace("\n", "<br>")
+        
+        parts = []
+        for para in cell.text_frame.paragraphs:
+            text = self._format_paragraph_text(para).strip()
+            if text:
+                # Escape pipe characters for Markdown table
+                text = text.replace("|", "\\|")
+                parts.append(text)
+        
+        return "<br>".join(parts)
+
+    def _format_shape_text(self, shape) -> str:
+        """
+        Format all text in a shape with markdown styles and hyperlinks.
+        
+        Processes all paragraphs in the shape's text_frame.
+        Each paragraph is processed with _format_paragraph_text().
+        
+        Args:
+            shape: Shape object with text_frame
+            
+        Returns:
+            Formatted markdown string (paragraphs joined with newline)
+        """
+        if not shape.has_text_frame:
+            return self._to_utf8(shape.text) if hasattr(shape, 'text') else ""
+        
+        parts = []
+        for para in shape.text_frame.paragraphs:
+            text = self._format_paragraph_text(para)
+            if text:
+                parts.append(text)
+        
+        return ' '.join(parts)
+    # --- END MODULE ---
+
+    # --- MODULE: Hierarchical Text Detection (BRIEF_06) ---
+    def _has_bullet_list(self, shape) -> bool:
+        """
+        Check if shape contains hierarchical bullet points.
+        
+        A shape is considered a bullet list if any paragraph
+        has a level > 0 (indented bullets).
+        """
+        if not shape.has_text_frame:
+            return False
+        for para in shape.text_frame.paragraphs:
+            if para.level and para.level > 0:
+                return True
+        return False
+
+    def _get_shape_font_size(self, shape) -> Optional[float]:
+        """
+        Get dominant font size of a text shape.
+        
+        Returns the font size of the first run that has a size defined.
+        """
+        if not shape.has_text_frame:
+            return None
+        for para in shape.text_frame.paragraphs:
+            for run in para.runs:
+                if run.font.size:
+                    return run.font.size.pt
+        return None
+
+    def _get_paragraph_font_size(self, para) -> Optional[float]:
+        """
+        Get font size of a paragraph from its first run with a defined size.
+        
+        Args:
+            para: Paragraph object from text_frame.paragraphs
+            
+        Returns:
+            Font size in points, or None if not defined
+        """
+        for run in para.runs:
+            if run.font.size:
+                return run.font.size.pt
+        return None
+
+    def _collect_paragraph_metrics(self, text_shapes: List) -> List[tuple]:
+        """
+        Collect font metrics for all paragraphs across all text shapes.
+        
+        Analyzes each paragraph individually to get accurate font size
+        and character count, including bullet items.
+        
+        Args:
+            text_shapes: List of text shapes (non-title)
+            
+        Returns:
+            List of (font_size, char_count) tuples for all paragraphs
+        """
+        metrics = []
+        for shape in text_shapes:
+            if not shape.has_text_frame:
+                continue
+            for para in shape.text_frame.paragraphs:
+                size = self._get_paragraph_font_size(para)
+                if size:
+                    char_count = len(para.text.strip())
+                    if char_count > 0:
+                        metrics.append((size, char_count))
+        return metrics
+
+    def _compute_heading_sizes(self, text_shapes: List) -> set[float]:
+        """
+        Compute which font sizes should be rendered as headings.
+        
+        Algorithm:
+        - Collect all paragraphs with their font sizes and char counts
+        - Calculate total character count per font size (font_weights)
+        - The dominant size = font size with most characters (normal text)
+        - Font sizes larger than dominant are heading sizes
+        
+        Args:
+            text_shapes: List of text shapes (non-title)
+            
+        Returns:
+            Set of font sizes (pt) that should be rendered as headings
+        """
+        metrics = self._collect_paragraph_metrics(text_shapes)
+        
+        if not metrics:
+            return set()
+        
+        font_weights: dict[float, int] = {}
+        for size, char_count in metrics:
+            font_weights[size] = font_weights.get(size, 0) + char_count
+        
+        dominant_size = max(font_weights, key=lambda s: font_weights[s])
+        
+        return {s for s in font_weights if s > dominant_size}
+
+    def _get_heading_level(self, size: float, heading_sizes: set[float]) -> Optional[int]:
+        """
+        Get heading level (2-6) for a font size based on heading sizes hierarchy.
+        
+        Args:
+            size: Font size in points
+            heading_sizes: Set of sizes that are headings
+            
+        Returns:
+            Heading level (2-6) or None if not a heading
+        """
+        if size not in heading_sizes:
+            return None
+        sorted_sizes = sorted(heading_sizes, reverse=True)
+        level = sorted_sizes.index(size) + 2
+        return min(level, 6)
+
+    def _has_explicit_no_bullet(self, para) -> bool:
+        """
+        Check if paragraph has explicit buNone marker (no bullet).
+        
+        In PPTX, buNone indicates the paragraph explicitly has no bullet,
+        even when other paragraphs in the same shape have bullets.
+        """
+        try:
+            pPr = para._p.pPr
+            if pPr is not None:
+                ns = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
+                buNone = pPr.find(f'.//{ns}buNone')
+                return buNone is not None
+        except Exception:
+            pass
+        return False
+
+    def _render_text_shape(self, shape, heading_sizes: set[float]) -> str:
+        """
+        Render a text shape to markdown, handling each paragraph individually.
+        
+        Each paragraph is classified based on its own font size:
+        - Bullets (level > 0, or level 0 without buNone in hierarchical list)
+        - Font size in heading_sizes → heading with appropriate level
+        - Otherwise → normal text
+        
+        Args:
+            shape: Shape with text_frame
+            heading_sizes: Set of font sizes that should be headings
+            
+        Returns:
+            Markdown string for the shape
+        """
+        if not shape.has_text_frame:
+            return ""
+        
+        # Check if this is a hierarchical bullet list
+        is_hierarchical = any(
+            (para.level or 0) > 0 
+            for para in shape.text_frame.paragraphs
+        )
+        
+        result = []
+        current_bullets = []
+        
+        for para in shape.text_frame.paragraphs:
+            text = self._format_paragraph_text(para).strip()
+            if not text:
+                continue
+            
+            level = para.level or 0
+            size = self._get_paragraph_font_size(para)
+            has_no_bullet = self._has_explicit_no_bullet(para)
+            
+            # Determine if this paragraph should be a bullet
+            is_bullet = level > 0 or (is_hierarchical and not has_no_bullet)
+            
+            if is_bullet:
+                indent = "   " * level
+                current_bullets.append(f"{indent}- {text}")
+            else:
+                if current_bullets:
+                    result.append("\n".join(current_bullets))
+                    current_bullets = []
+                
+                heading_level = self._get_heading_level(size, heading_sizes) if size else None
+                if heading_level:
+                    result.append(f"{'#' * heading_level} {text}")
+                else:
+                    result.append(text)
+        
+        if current_bullets:
+            result.append("\n".join(current_bullets))
+        
+        return "\n".join(result) + "\n" if result else ""
+
+    def _sort_shapes_by_position(self, shapes: List, slide_height: int) -> List:
+        """
+        Sort shapes by visual position: Y ascending, then X ascending.
+        
+        Groups shapes into Y bands (5% of slide height tolerance)
+        to handle slight vertical misalignment as same "row".
+        
+        Args:
+            shapes: List of shapes with top/left attributes
+            slide_height: Slide height for normalization
+            
+        Returns:
+            List of shapes sorted by position
+        """
+        def position_key(shape):
+            y = shape.top or 0
+            x = shape.left or 0
+            y_band = int((y / slide_height) * 20) if slide_height else 0
+            return (y_band, x)
+        
+        return sorted(shapes, key=position_key)
+
+    def _extract_paragraphs_with_bullets(self, shape) -> str:
+        """
+        Extract text from shape preserving bullet hierarchy.
+        
+        Converts each paragraph to markdown list format based
+        on its indentation level. Level 0 items are treated as bullets
+        unless they have explicit buNone marker.
+        
+        Args:
+            shape: Shape with text_frame
+            
+        Returns:
+            str: Markdown formatted text with bullet lists
+        """
+        if not shape.has_text_frame:
+            return self._to_utf8(shape.text) if hasattr(shape, 'text') else ""
+        
+        # Check if this is a hierarchical bullet list
+        is_hierarchical = any(
+            (para.level or 0) > 0 
+            for para in shape.text_frame.paragraphs
+        )
+        
+        lines = []
+        for para in shape.text_frame.paragraphs:
+            text = self._format_paragraph_text(para).strip()
+            if not text:
+                continue
+            
+            level = para.level or 0
+            indent = "   " * level  # 3 spaces per level for markdown
+            has_no_bullet = self._has_explicit_no_bullet(para)
+            
+            is_bullet = level > 0 or (is_hierarchical and not has_no_bullet)
+            
+            if is_bullet:
+                lines.append(f"{indent}- {text}")
+            else:
+                lines.append(text)
+        
+        return "\n".join(lines)
+    # --- END MODULE ---
+
+    # --- MODULE: Path Resolution (BRIEF_06) ---
+    def _resolve_image_path(
+        self,
+        source_path: Optional[str],
+        output_path: Optional[str] = None,
+        image_path: Optional[str] = None
+    ) -> tuple[str, str, bool]:
+        """
+        Resolve image directory and output base for path calculation.
+        
+        When both output_path and image_path are provided, the caller
+        manages the links - paths are used as-is without relative calculation.
+        
+        Args:
+            source_path: Path to source PPTX file
+            output_path: Optional path for output markdown file
+            image_path: Optional custom image directory/path
+            
+        Returns:
+            tuple: (output_base, image_base, caller_manages_links)
+                - output_base: Base directory for relative path calculation
+                - image_base: Absolute path to image directory
+                - caller_manages_links: True if caller handles link generation
+        """
+        # If both output_path and image_path are provided, caller manages links
+        caller_manages_links = output_path is not None and image_path is not None
+        
+        # Determine source directory
+        if source_path:
+            source_dir = os.path.dirname(os.path.abspath(source_path))
+        else:
+            source_dir = os.getcwd()
+        
+        # Output base directory
+        if output_path:
+            output_base = os.path.dirname(os.path.abspath(output_path))
+        else:
+            output_base = source_dir
+        
+        # Image base directory
+        if image_path:
+            if os.path.isabs(image_path):
+                image_base = image_path
+            else:
+                image_base = os.path.join(output_base, image_path)
+        else:
+            image_base = os.path.join(output_base, "images")
+        
+        return output_base, image_base, caller_manages_links
+
+    def _get_relative_image_link(
+        self,
+        image_full_path: str,
+        output_base: str,
+        image_path_raw: Optional[str],
+        caller_manages_links: bool
+    ) -> str:
+        """
+        Generate image link for markdown.
+        
+        If caller_manages_links is True, uses image_path_raw + filename as-is.
+        Otherwise calculates relative path from output_base.
+        
+        Args:
+            image_full_path: Absolute path to saved image
+            output_base: Directory where content.md will be
+            image_path_raw: Original image_path parameter from caller
+            caller_manages_links: If True, use paths as provided
+            
+        Returns:
+            str: Path for markdown image link
+        """
+        filename = os.path.basename(image_full_path)
+        
+        if caller_manages_links and image_path_raw:
+            # Caller manages links - use image_path as-is + filename
+            link = f"{image_path_raw}/{filename}".replace('\\', '/')
+            # Normalize double slashes
+            while '//' in link:
+                link = link.replace('//', '/')
+            return link
+        else:
+            # Calculate relative path
+            rel_path = os.path.relpath(image_full_path, output_base)
+            return rel_path.replace('\\', '/')
+    # --- END MODULE ---
+
     def accepts(
         self,
         file_stream: BinaryIO,
@@ -172,22 +714,21 @@ class PptxConverter(DocumentConverter):
         # Perform the conversion
         presentation = pptx.Presentation(file_stream)
         
-        # --- MODULE: Image Management - Configuration (BRIEF_01) ---
-        image_dir_raw = kwargs.get("image_dir", "images")
-        
-        # Apply wiki-folder slugify ONLY if using default "images" folder
-        # If user provides custom path, respect it as-is (may contain subfolders)
-        if image_dir_raw == "images":
-            # Default: slugify based on presentation filename if available
-            image_dir = self._slugify(image_dir_raw)
-        else:
-            # Custom path: use as-is, normalize path separators
-            image_dir = image_dir_raw.replace('\\', '/')
-        
+        # --- MODULE: Image Management - Configuration (BRIEF_01 + BRIEF_06) ---
         output_images = kwargs.get("output_images", True)
         skip_background_images = kwargs.get("skip_background_images", True)
-        skip_icon_images = kwargs.get("skip_icon_images", False)  # Extract all images by default
+        skip_icon_images = kwargs.get("skip_icon_images", False)
         self._image_hashes = {}  # Reset for each conversion
+        
+        # Path resolution for relative links
+        source_path = kwargs.get("source_path") or stream_info.filename
+        output_path = kwargs.get("output_path")
+        image_path_raw = kwargs.get("image_path", "images")
+        
+        # Resolve paths - if both output_path and image_path provided, caller manages links
+        output_base, image_dir, caller_manages_links = self._resolve_image_path(
+            source_path, output_path, image_path_raw
+        )
         # --- END MODULE ---
         
         md_content = ""
@@ -243,149 +784,177 @@ class PptxConverter(DocumentConverter):
             
             # === PHASE 3: Process in logical order ===
             
-            # 3.1 Title
+            # Get slide height for position normalization
+            slide_height = presentation.slide_height or 1
+            
+            # 3.1 Title (always h1)
             if title_shape and title_shape.has_text_frame:
-                md_content += "# " + title_shape.text.lstrip() + "\n"
+                title_text = self._format_shape_text(title_shape).lstrip()
+                md_content += f"# {title_text}\n"
             
-            # 3.2 Text shapes (non-title) - sorted by position
-            sorted_text = sorted(
-                text_shapes,
-                key=lambda x: (x.top or 0, x.left or 0),
-            )
-            for shape in sorted_text:
-                md_content += shape.text + "\n"
+            # 3.2 Compute heading sizes from all text shapes
+            heading_sizes = self._compute_heading_sizes(text_shapes)
             
-            # 3.3 Tables (with their floating images included)
-            sorted_tables = sorted(
-                table_shapes,
-                key=lambda x: (x.top or 0, x.left or 0),
-            )
-            for table_shape in sorted_tables:
-                # Filter kwargs to avoid duplicate argument errors
-                table_kwargs = {k: v for k, v in kwargs.items() 
-                               if k not in ('output_images', 'image_dir')}
-                md_content += self._convert_table_to_markdown(
-                    table_shape.table,
-                    slide_num=slide_num,
-                    table_idx=table_count,
-                    pptx_stream=file_stream,
-                    image_dir=image_dir,
-                    output_images=output_images,
-                    table_shape=table_shape,
-                    slide_shapes=list(slide.shapes),
-                    **table_kwargs,
-                )
-                table_count += 1
+            # Build list of all content items with their Y position for unified sorting
+            # Format: (y_position, x_position, type, shape/data)
+            content_items = []
             
-            # 3.4 SmartArt
+            for shape in text_shapes:
+                y = shape.top or 0
+                x = shape.left or 0
+                content_items.append((y, x, 'text', shape))
+            
             for shape in smartart_shapes:
-                if not LXML_AVAILABLE:
-                    continue
-                
-                diagram_path = self._get_smartart_diagram_path(
-                    file_stream, slide_num - 1, shape
-                )
-                
-                if diagram_path:
-                    texts, node_images = self._extract_smartart_text(
-                        file_stream, diagram_path
-                    )
-                    
-                    saved_images = {}
-                    image_descriptions = {}
-                    
-                    if node_images and kwargs.get('output_images'):
-                        saved_images = self._save_smartart_images(
-                            file_stream,
-                            diagram_path,
-                            node_images,
-                            slide_num,
-                            smartart_count,
-                            kwargs,
-                        )
-                    
-                    smartart_md = self._convert_smartart_to_markdown(
-                        texts,
-                        saved_images,
-                        smartart_count,
-                        slide_num,
-                        image_descriptions,
-                    )
-                    
-                    if smartart_md:
-                        md_content += smartart_md
-                        smartart_count += 1
+                y = shape.top or 0
+                x = shape.left or 0
+                content_items.append((y, x, 'smartart', shape))
             
-            # 3.5 Charts
+            for shape in table_shapes:
+                y = shape.top or 0
+                x = shape.left or 0
+                content_items.append((y, x, 'table', shape))
+            
             for shape in chart_shapes:
-                md_content += self._convert_chart_to_markdown(shape.chart)
+                y = shape.top or 0
+                x = shape.left or 0
+                content_items.append((y, x, 'chart', shape))
             
-            # 3.6 Orphan images (not in tables)
-            sorted_pictures = sorted(
-                orphan_pictures,
-                key=lambda x: (x.top or 0, x.left or 0),
-            )
-            for shape in sorted_pictures:
-                # Skip background/icon images if configured
-                if skip_background_images and self._is_background_image(shape):
-                    continue
-                if skip_icon_images and self._classify_image_type(shape) == 'icon':
-                    continue
+            for shape in orphan_pictures:
+                y = shape.top or 0
+                x = shape.left or 0
+                content_items.append((y, x, 'picture', shape))
+            
+            # Sort by Y band (5% tolerance) then X
+            def position_key(item):
+                y, x, _, _ = item
+                y_band = int((y / slide_height) * 20) if slide_height else 0
+                return (y_band, x)
+            
+            content_items.sort(key=position_key)
+            
+            # 3.3 Process all content in visual order
+            for y, x, item_type, shape in content_items:
+                if item_type == 'text':
+                    rendered = self._render_text_shape(shape, heading_sizes)
+                    if rendered:
+                        md_content += rendered + "\n"
                 
-                # Get alt text and LLM description
-                llm_description = ""
-                alt_text = ""
-                
-                llm_client = kwargs.get("llm_client")
-                llm_model = kwargs.get("llm_model")
-                if llm_client is not None and llm_model is not None:
-                    image_filename = shape.image.filename
-                    image_extension = os.path.splitext(image_filename)[1] if image_filename else None
-                    image_stream_info = StreamInfo(
-                        mimetype=shape.image.content_type,
-                        extension=image_extension,
-                        filename=image_filename,
+                elif item_type == 'table':
+                    table_kwargs = {k: v for k, v in kwargs.items() 
+                                   if k not in ('output_images', 'image_path', 'image_dir')}
+                    md_content += self._convert_table_to_markdown(
+                        shape.table,
+                        slide_num=slide_num,
+                        table_idx=table_count,
+                        pptx_stream=file_stream,
+                        image_dir=image_dir,
+                        output_images=output_images,
+                        table_shape=shape,
+                        slide_shapes=list(slide.shapes),
+                        **table_kwargs,
                     )
-                    image_stream = io.BytesIO(shape.image.blob)
-                    try:
-                        llm_description = llm_caption(
-                            image_stream,
-                            image_stream_info,
-                            client=llm_client,
-                            model=llm_model,
-                            prompt=kwargs.get("llm_prompt"),
+                    table_count += 1
+                
+                elif item_type == 'smartart':
+                    if not LXML_AVAILABLE:
+                        continue
+                    
+                    diagram_path = self._get_smartart_diagram_path(
+                        file_stream, slide_num - 1, shape
+                    )
+                    
+                    if diagram_path:
+                        texts, node_images = self._extract_smartart_text(
+                            file_stream, diagram_path
                         )
+                        
+                        saved_images = {}
+                        image_descriptions = {}
+                        
+                        if node_images and kwargs.get('output_images'):
+                            saved_images = self._save_smartart_images(
+                                file_stream,
+                                diagram_path,
+                                node_images,
+                                slide_num,
+                                smartart_count,
+                                kwargs,
+                            )
+                        
+                        smartart_md = self._convert_smartart_to_markdown(
+                            texts,
+                            saved_images,
+                            smartart_count,
+                            slide_num,
+                            image_descriptions,
+                        )
+                        
+                        if smartart_md:
+                            md_content += smartart_md
+                            smartart_count += 1
+                
+                elif item_type == 'chart':
+                    md_content += self._convert_chart_to_markdown(shape.chart)
+                
+                elif item_type == 'picture':
+                    if skip_background_images and self._is_background_image(shape):
+                        continue
+                    if skip_icon_images and self._classify_image_type(shape) == 'icon':
+                        continue
+                    
+                    llm_description = ""
+                    alt_text = ""
+                    
+                    llm_client = kwargs.get("llm_client")
+                    llm_model = kwargs.get("llm_model")
+                    if llm_client is not None and llm_model is not None:
+                        image_filename = shape.image.filename
+                        image_extension = os.path.splitext(image_filename)[1] if image_filename else None
+                        image_stream_info = StreamInfo(
+                            mimetype=shape.image.content_type,
+                            extension=image_extension,
+                            filename=image_filename,
+                        )
+                        image_stream = io.BytesIO(shape.image.blob)
+                        try:
+                            llm_description = llm_caption(
+                                image_stream,
+                                image_stream_info,
+                                client=llm_client,
+                                model=llm_model,
+                                prompt=kwargs.get("llm_prompt"),
+                            )
+                        except Exception:
+                            pass
+                    
+                    try:
+                        alt_text = shape._element._nvXxPr.cNvPr.attrib.get("descr", "")
                     except Exception:
                         pass
-                
-                try:
-                    alt_text = shape._element._nvXxPr.cNvPr.attrib.get("descr", "")
-                except Exception:
-                    pass
-                
-                alt_text = "\n".join(filter(None, [llm_description, alt_text]))
-                alt_text = re.sub(r"[\r\n\[\]]", " ", alt_text)
-                alt_text = re.sub(r"\s+", " ", alt_text).strip()
-                
-                # Output image
-                if kwargs.get("keep_data_uris", False):
-                    blob = shape.image.blob
-                    content_type = shape.image.content_type or "image/png"
-                    b64_string = base64.b64encode(blob).decode("utf-8")
-                    md_content += f"\n![{alt_text}](data:{content_type};base64,{b64_string})\n"
-                elif output_images:
-                    image_path, deduplicated = self._save_image(
-                        shape, slide_num, image_count, image_dir
-                    )
-                    encoded_path = quote(image_path, safe='/')
-                    md_content += f"\n![{alt_text}]({encoded_path})\n"
-                    if not deduplicated:
-                        image_count += 1
-                else:
-                    filename = re.sub(r"\W", "", shape.name) + ".jpg"
-                    md_content += "\n![" + alt_text + "](" + filename + ")\n"
+                    
+                    alt_text = "\n".join(filter(None, [llm_description, alt_text]))
+                    alt_text = re.sub(r"[\r\n\[\]]", " ", alt_text)
+                    alt_text = re.sub(r"\s+", " ", alt_text).strip()
+                    
+                    if kwargs.get("keep_data_uris", False):
+                        blob = shape.image.blob
+                        content_type = shape.image.content_type or "image/png"
+                        b64_string = base64.b64encode(blob).decode("utf-8")
+                        md_content += f"\n![{alt_text}](data:{content_type};base64,{b64_string})\n"
+                    elif output_images:
+                        image_path, deduplicated = self._save_image(
+                            shape, slide_num, image_count, image_dir, output_base,
+                            image_path_raw, caller_manages_links
+                        )
+                        encoded_path = quote(image_path, safe='/')
+                        md_content += f"\n![{alt_text}]({encoded_path})\n"
+                        if not deduplicated:
+                            image_count += 1
+                    else:
+                        filename = re.sub(r"\W", "", shape.name) + ".jpg"
+                        md_content += "\n![" + alt_text + "](" + filename + ")\n"
             
-            # 3.7 Group shapes (recursive processing)
+            # 3.4 Group shapes (recursive processing)
             def process_group(group_shape):
                 nonlocal md_content, image_count
                 sorted_subshapes = sorted(
@@ -410,14 +979,15 @@ class PptxConverter(DocumentConverter):
                         
                         if output_images:
                             image_path, deduplicated = self._save_image(
-                                subshape, slide_num, image_count, image_dir
+                                subshape, slide_num, image_count, image_dir, output_base,
+                                image_path_raw, caller_manages_links
                             )
                             encoded_path = quote(image_path, safe='/')
                             md_content += f"\n![{alt_text}]({encoded_path})\n"
                             if not deduplicated:
                                 image_count += 1
                     elif subshape.has_text_frame:
-                        md_content += subshape.text + "\n"
+                        md_content += self._format_shape_text(subshape) + "\n"
             
             for group_shape in group_shapes:
                 process_group(group_shape)
@@ -425,10 +995,18 @@ class PptxConverter(DocumentConverter):
             md_content = md_content.strip()
 
             if slide.has_notes_slide:
-                md_content += "\n\n### Notes:\n"
                 notes_frame = slide.notes_slide.notes_text_frame
                 if notes_frame is not None:
-                    md_content += notes_frame.text
+                    # Format each paragraph with styles and links
+                    notes_lines = []
+                    for para in notes_frame.paragraphs:
+                        text = self._format_paragraph_text(para).strip()
+                        if text:
+                            notes_lines.append(text)
+                    if notes_lines:
+                        notes_text = '\n'.join(notes_lines)
+                        quoted_lines = '\n'.join(f"> {line}" for line in notes_text.split('\n'))
+                        md_content += f"\n\n{quoted_lines}"
                 md_content = md_content.strip()
 
         return DocumentConverterResult(markdown=md_content.strip())
@@ -876,7 +1454,7 @@ class PptxConverter(DocumentConverter):
             node_images: Dict mapping node_id -> rId for images
             slide_number: Slide number for naming
             smartart_index: SmartArt index for naming
-            kwargs: Converter options (output_images, images_dir, etc.)
+            kwargs: Converter options (output_images, image_path, etc.)
             
         Returns:
             Dict mapping node_id -> saved_path (relative)
@@ -921,7 +1499,7 @@ class PptxConverter(DocumentConverter):
                         rid_to_path[rel_id] = media_path
                 
                 # Save each image associated with nodes
-                image_dir = kwargs.get('images_dir', 'images')
+                image_dir = kwargs.get('image_path', 'images')
                 os.makedirs(image_dir, exist_ok=True)
                 
                 for idx, (node_id, r_id) in enumerate(node_images.items()):
@@ -1134,7 +1712,10 @@ class PptxConverter(DocumentConverter):
         shape,
         slide_num: int,
         image_count: int,
-        image_dir: str
+        image_dir: str,
+        output_base: Optional[str] = None,
+        image_path_raw: Optional[str] = None,
+        caller_manages_links: bool = False
     ) -> tuple[str, bool]:
         """
         Save PPTX image to local folder (with mandatory deduplication).
@@ -1143,11 +1724,14 @@ class PptxConverter(DocumentConverter):
             shape: PPTX shape containing image
             slide_num: Slide number (1-indexed)
             image_count: Image counter within slide (0-indexed)
-            image_dir: Destination folder (relative path)
+            image_dir: Destination folder (absolute path)
+            output_base: Base directory for relative path calculation
+            image_path_raw: Original image_path parameter from caller
+            caller_manages_links: If True, use paths as provided by caller
         
         Returns:
-            tuple: (image_path, was_deduplicated)
-                - image_path: Relative path to saved image
+            tuple: (image_link, was_deduplicated)
+                - image_link: Path for markdown image link
                 - was_deduplicated: True if image already existed
         """
         blob = shape.image.blob
@@ -1176,11 +1760,15 @@ class PptxConverter(DocumentConverter):
         # Generate filename: slide{N}_image{M}.{ext}
         image_filename = f"slide{slide_num}_image{image_count}{ext}"
         
-        # --- MODULE: Cross-platform Path Handling (BRIEF_01 - Solution 1A) ---
-        # Use pathlib.Path for cross-platform paths, convert to Unix format
+        # --- MODULE: Cross-platform Path Handling (BRIEF_01 + BRIEF_06) ---
+        # Use pathlib.Path for cross-platform paths
         image_path_obj = Path(image_dir) / image_filename
-        image_path = image_path_obj.as_posix()  # Always use forward slashes
-        disk_path = str(image_path_obj)  # Use OS-specific path for disk operations
+        disk_path = str(image_path_obj)  # OS-specific path for disk operations
+        
+        # Calculate link path for markdown
+        image_link = self._get_relative_image_link(
+            disk_path, output_base, image_path_raw, caller_manages_links
+        )
         # --- END MODULE ---
         
         # Create directory if needed
@@ -1217,7 +1805,9 @@ class PptxConverter(DocumentConverter):
                 disk_path = str(Path(image_dir) / f"slide{slide_num}_image{image_count}{original_ext}")
                 with open(disk_path, 'wb') as f:
                     f.write(blob)
-                image_path = Path(disk_path).relative_to(Path(image_dir).parent).as_posix()
+                image_link = self._get_relative_image_link(
+                    disk_path, output_base, image_path_raw, caller_manages_links
+                )
             except Exception as e:
                 # WMF conversion failed - try to save as WMF original format
                 import warnings
@@ -1227,7 +1817,9 @@ class PptxConverter(DocumentConverter):
                 disk_path_fallback = str(Path(image_dir) / f"slide{slide_num}_image{image_count}{original_ext}")
                 with open(disk_path_fallback, 'wb') as f:
                     f.write(blob)
-                image_path = Path(disk_path_fallback).relative_to(Path(image_dir).parent).as_posix()
+                image_link = self._get_relative_image_link(
+                    disk_path_fallback, output_base, image_path_raw, caller_manages_links
+                )
         else:
             # Standard save for non-EMF formats
             with open(disk_path, 'wb') as f:
@@ -1235,9 +1827,9 @@ class PptxConverter(DocumentConverter):
         # --- END MODULE ---
         
         # Store hash for future deduplication (mandatory)
-        self._image_hashes[image_hash] = image_path
+        self._image_hashes[image_hash] = image_link
         
-        return image_path, False
+        return image_link, False
     # --- END MODULE ---
 
     # --- MODULE: Table Cell Color Extraction ---
@@ -1709,13 +2301,9 @@ class PptxConverter(DocumentConverter):
                 
                 cell_parts = []
                 
-                # 1. Extract text
-                text = cell.text.strip() if cell.text else ""
+                # 1. Extract text with styles and hyperlinks
+                text = self._format_cell_text(cell)
                 if text:
-                    # Escape pipe characters for Markdown table
-                    text = text.replace("|", "\\|")
-                    # Replace newlines with <br> for table cell
-                    text = text.replace("\n", "<br>")
                     cell_parts.append(text)
                 
                 # 2. Extract embedded images (blipFill in cell XML)
