@@ -2,6 +2,14 @@
 .copilot-tracking/temp/
 .copilot-tracking/tests/
 
+# Microsoft Office temporary files
+~$*.pptx
+~$*.docx
+~$*.xlsx
+~$*.xls
+~$*.doc
+~$*.ppt
+
 # Temporary test folders
 test_default/
 test_explicit_false/

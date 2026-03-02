@@ -462,6 +462,24 @@ class PptxConverter(DocumentConverter):
             pass
         return False
 
+    def _has_explicit_bullet(self, para) -> bool:
+        """
+        Check if paragraph has explicit bullet marker (buChar or buAutoNum).
+        
+        In PPTX, buChar indicates a bullet character (e.g., Wingdings symbol),
+        and buAutoNum indicates an auto-numbered list.
+        """
+        try:
+            pPr = para._p.pPr
+            if pPr is not None:
+                ns = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
+                buChar = pPr.find(f'.//{ns}buChar')
+                buAutoNum = pPr.find(f'.//{ns}buAutoNum')
+                return buChar is not None or buAutoNum is not None
+        except Exception:
+            pass
+        return False
+
     def _render_text_shape(self, shape, heading_sizes: set[float]) -> str:
         """
         Render a text shape to markdown, handling each paragraph individually.
@@ -498,16 +516,21 @@ class PptxConverter(DocumentConverter):
             level = para.level or 0
             size = self._get_paragraph_font_size(para)
             has_no_bullet = self._has_explicit_no_bullet(para)
+            has_explicit_bullet = self._has_explicit_bullet(para)
             
             # Determine if this paragraph should be a bullet
-            is_bullet = level > 0 or (is_hierarchical and not has_no_bullet)
+            # bullet if: level > 0, or explicit buChar/buAutoNum, or hierarchical without buNone
+            is_bullet = level > 0 or has_explicit_bullet or (is_hierarchical and not has_no_bullet)
             
             if is_bullet:
+                if not current_bullets and result:
+                    result.append("")  # Empty line before starting bullet list
                 indent = "   " * level
                 current_bullets.append(f"{indent}- {text}")
             else:
                 if current_bullets:
                     result.append("\n".join(current_bullets))
+                    result.append("")  # Empty line after bullet list
                     current_bullets = []
                 
                 heading_level = self._get_heading_level(size, heading_sizes) if size else None
@@ -575,8 +598,10 @@ class PptxConverter(DocumentConverter):
             level = para.level or 0
             indent = "   " * level  # 3 spaces per level for markdown
             has_no_bullet = self._has_explicit_no_bullet(para)
+            has_explicit_bullet = self._has_explicit_bullet(para)
             
-            is_bullet = level > 0 or (is_hierarchical and not has_no_bullet)
+            # bullet if: level > 0, or explicit buChar/buAutoNum, or hierarchical without buNone
+            is_bullet = level > 0 or has_explicit_bullet or (is_hierarchical and not has_no_bullet)
             
             if is_bullet:
                 lines.append(f"{indent}- {text}")
@@ -824,13 +849,34 @@ class PptxConverter(DocumentConverter):
                 x = shape.left or 0
                 content_items.append((y, x, 'picture', shape))
             
-            # Sort by Y band (5% tolerance) then X
-            def position_key(item):
-                y, x, _, _ = item
-                y_band = int((y / slide_height) * 20) if slide_height else 0
-                return (y_band, x)
+            # Sort content items by position
+            # Detect if slide has columns (significant X variance)
+            slide_width = presentation.slide_width or 1
             
-            content_items.sort(key=position_key)
+            if content_items:
+                x_values = [x for _, x, _, _ in content_items]
+                x_min, x_max = min(x_values), max(x_values)
+                x_spread = (x_max - x_min) / slide_width if slide_width else 0
+                
+                # If X spread > 40% of slide width, treat as multi-column layout
+                has_columns = x_spread > 0.4
+            else:
+                has_columns = False
+            
+            if has_columns:
+                # Multi-column: sort by X-band (column) first, then Y within each column
+                def column_position_key(item):
+                    y, x, _, _ = item
+                    x_band = int((x / slide_width) * 10) if slide_width else 0  # 10% bands
+                    return (x_band, y)
+                content_items.sort(key=column_position_key)
+            else:
+                # Single column: sort by Y-band then X
+                def position_key(item):
+                    y, x, _, _ = item
+                    y_band = int((y / slide_height) * 20) if slide_height else 0
+                    return (y_band, x)
+                content_items.sort(key=position_key)
             
             # 3.3 Process all content in visual order
             for y, x, item_type, shape in content_items:
@@ -842,15 +888,19 @@ class PptxConverter(DocumentConverter):
                 elif item_type == 'table':
                     table_kwargs = {k: v for k, v in kwargs.items() 
                                    if k not in ('output_images', 'image_path', 'image_dir')}
+                    table_name = getattr(shape, 'name', None) or f"table{table_count}"
                     md_content += self._convert_table_to_markdown(
                         shape.table,
                         slide_num=slide_num,
-                        table_idx=table_count,
+                        table_name=table_name,
                         pptx_stream=file_stream,
                         image_dir=image_dir,
                         output_images=output_images,
                         table_shape=shape,
                         slide_shapes=list(slide.shapes),
+                        output_base=output_base,
+                        image_path_raw=image_path_raw,
+                        caller_manages_links=caller_manages_links,
                         **table_kwargs,
                     )
                     table_count += 1
@@ -1995,10 +2045,13 @@ class PptxConverter(DocumentConverter):
         cell,
         pptx_stream: BinaryIO,
         slide_num: int,
-        table_idx: int,
+        table_name: str,
         row_idx: int,
         col_idx: int,
         image_dir: str,
+        output_base: str = "",
+        image_path_raw: str = "images",
+        caller_manages_links: bool = False,
     ) -> list[str]:
         """
         Extract images from a table cell's background fill.
@@ -2010,10 +2063,13 @@ class PptxConverter(DocumentConverter):
             cell: python-pptx _Cell object
             pptx_stream: PPTX file as binary stream
             slide_num: 1-indexed slide number
-            table_idx: 0-indexed table index within slide
+            table_name: Table name from shape.name (for image naming)
             row_idx: 0-indexed row index
             col_idx: 0-indexed column index
-            image_dir: Directory to save images
+            image_dir: Directory to save images (absolute path)
+            output_base: Base directory for relative path calculation
+            image_path_raw: Original image_path parameter for link generation
+            caller_manages_links: If True, use image_path_raw as-is for links
             
         Returns:
             List of markdown image references like "![](path/to/image.png)"
@@ -2094,15 +2150,17 @@ class PptxConverter(DocumentConverter):
                     # Determine extension
                     ext = '.' + media_path.split('.')[-1].lower()
                     
+                    # Sanitize table name for filename
+                    safe_table_name = re.sub(r'[^\w\-]', '_', table_name)
+                    
                     # Generate filename
                     img_filename = (
-                        f"slide{slide_num}_table{table_idx}_"
+                        f"slide{slide_num}_{safe_table_name}_"
                         f"cell{row_idx}x{col_idx}_img{img_idx}{ext}"
                     )
                     
-                    # Build paths
+                    # Build paths - save to disk with absolute path
                     img_path_obj = Path(image_dir) / img_filename
-                    img_path = img_path_obj.as_posix()
                     disk_path = str(img_path_obj)
                     
                     # Create directory and save
@@ -2110,9 +2168,14 @@ class PptxConverter(DocumentConverter):
                     with open(disk_path, 'wb') as f:
                         f.write(image_bytes)
                     
+                    # Generate link using shared function
+                    img_link = self._get_relative_image_link(
+                        disk_path, output_base, image_path_raw, caller_manages_links
+                    )
+                    
                     # Register in hash map
-                    self._image_hashes[image_hash] = img_path
-                    image_refs.append(f"![]({img_path})")
+                    self._image_hashes[image_hash] = img_link
+                    image_refs.append(f"![]({img_link})")
             
         except Exception:
             pass
@@ -2127,8 +2190,11 @@ class PptxConverter(DocumentConverter):
         slide_shapes: list,
         pptx_stream: BinaryIO | None,
         slide_num: int,
-        table_idx: int,
+        table_name: str,
         image_dir: str,
+        output_base: str = "",
+        image_path_raw: str = "images",
+        caller_manages_links: bool = False,
     ) -> dict[tuple[int, int], list[str]]:
         """
         Map floating PICTURE shapes to table cells based on position.
@@ -2142,8 +2208,11 @@ class PptxConverter(DocumentConverter):
             slide_shapes: All shapes on the slide
             pptx_stream: PPTX file stream for image extraction
             slide_num: 1-indexed slide number
-            table_idx: 0-indexed table index
-            image_dir: Directory to save extracted images
+            table_name: Table name from shape.name (for image naming)
+            image_dir: Directory to save extracted images (absolute path)
+            output_base: Base directory for relative path calculation
+            image_path_raw: Original image_path parameter for link generation
+            caller_manages_links: If True, use image_path_raw as-is for links
             
         Returns:
             Dict mapping (row_idx, col_idx) to list of markdown image refs
@@ -2203,22 +2272,30 @@ class PptxConverter(DocumentConverter):
                     image_bytes = shape.image.blob
                     ext = shape.image.ext or 'png'
                     
+                    # Sanitize table name for filename
+                    safe_table_name = re.sub(r'[^\w\-]', '_', table_name)
+                    
                     # Generate unique filename
-                    img_name = f"slide{slide_num}_table{table_idx}_cell{row_idx}_{col_idx}"
+                    img_name = f"slide{slide_num}_{safe_table_name}_cell{row_idx}_{col_idx}"
                     
                     # Check for duplicate
                     image_hash = hashlib.md5(image_bytes).hexdigest()
                     if image_hash in self._image_hashes:
-                        img_path = self._image_hashes[image_hash]
+                        img_link = self._image_hashes[image_hash]
                     else:
-                        img_path = f"{image_dir}/{img_name}.{ext}"
-                        disk_path = img_path
+                        # Save to disk with absolute path
+                        disk_path = f"{image_dir}/{img_name}.{ext}"
                         
                         os.makedirs(image_dir, exist_ok=True)
                         with open(disk_path, 'wb') as f:
                             f.write(image_bytes)
                         
-                        self._image_hashes[image_hash] = img_path
+                        # Generate link using shared function
+                        img_link = self._get_relative_image_link(
+                            disk_path, output_base, image_path_raw, caller_manages_links
+                        )
+                        
+                        self._image_hashes[image_hash] = img_link
                     
                     # Use alt text if available
                     alt_text = shape.name or ""
@@ -2227,7 +2304,7 @@ class PptxConverter(DocumentConverter):
                     key = (row_idx, col_idx)
                     if key not in cell_images:
                         cell_images[key] = []
-                    cell_images[key].append(f"![{alt_text}]({img_path})")
+                    cell_images[key].append(f"![{alt_text}]({img_link})")
             except Exception:
                 pass
         
@@ -2238,12 +2315,15 @@ class PptxConverter(DocumentConverter):
         self,
         table,
         slide_num: int = 0,
-        table_idx: int = 0,
+        table_name: str = "",
         pptx_stream: BinaryIO | None = None,
         image_dir: str = "images",
         output_images: bool = True,
         table_shape=None,
         slide_shapes: list | None = None,
+        output_base: str = "",
+        image_path_raw: str = "images",
+        caller_manages_links: bool = False,
         **kwargs,
     ) -> str:
         """
@@ -2261,12 +2341,15 @@ class PptxConverter(DocumentConverter):
         Args:
             table: python-pptx Table object
             slide_num: 1-indexed slide number (for image naming)
-            table_idx: 0-indexed table index within slide
+            table_name: Table name from shape.name (for image naming)
             pptx_stream: PPTX file as binary stream (for image extraction)
-            image_dir: Directory to save extracted images
+            image_dir: Directory to save extracted images (absolute path)
             output_images: Whether to extract images
             table_shape: The table shape object (for floating image detection)
             slide_shapes: All shapes on the slide (for floating image detection)
+            output_base: Base directory for relative path calculation
+            image_path_raw: Original image_path parameter for link generation
+            caller_manages_links: If True, use image_path_raw as-is for links
             **kwargs: Additional converter options
             
         Returns:
@@ -2286,8 +2369,11 @@ class PptxConverter(DocumentConverter):
                 slide_shapes,
                 pptx_stream,
                 slide_num,
-                table_idx,
+                table_name,
                 image_dir,
+                output_base,
+                image_path_raw,
+                caller_manages_links,
             )
         
         for row_idx, row in enumerate(table.rows):
@@ -2295,8 +2381,10 @@ class PptxConverter(DocumentConverter):
             is_header = has_header_row and row_idx == 0
             
             for col_idx, cell in enumerate(row.cells):
-                # Skip spanned cells (part of a merge)
+                # Spanned cells (part of a merge) - add empty cell to preserve column alignment
+                # Markdown doesn't support cell merging, so we show empty cells
                 if hasattr(cell, 'is_spanned') and cell.is_spanned:
+                    row_cells.append("")
                     continue
                 
                 cell_parts = []
@@ -2312,10 +2400,13 @@ class PptxConverter(DocumentConverter):
                         cell,
                         pptx_stream,
                         slide_num,
-                        table_idx,
+                        table_name,
                         row_idx,
                         col_idx,
                         image_dir,
+                        output_base,
+                        image_path_raw,
+                        caller_manages_links,
                     )
                     cell_parts.extend(images)
                 
