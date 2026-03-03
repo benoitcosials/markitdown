@@ -103,34 +103,6 @@ class PptxConverter(DocumentConverter):
         self._image_hashes = {}  # Deduplication mapping {hash: path}
         # --- END MODULE ---
 
-    def _slugify(self, text: str) -> str:
-        """
-        Convert text to wiki-folder convention (slug format).
-        
-        Transforms: "Kickoff QA - Essais UAT R1" → "kickoff_qa_essais_uat_r1"
-        
-        Args:
-            text: Original text with spaces and special characters
-        
-        Returns:
-            str: Slugified text (lowercase, underscores, no special chars)
-        """
-        # Normalize unicode (decompose accents)
-        text = unicodedata.normalize('NFKD', text)
-        # Remove accents
-        text = text.encode('ascii', 'ignore').decode('ascii')
-        # Convert to lowercase
-        text = text.lower()
-        # Replace spaces and hyphens with underscores
-        text = re.sub(r'[\s-]+', '_', text)
-        # Remove any remaining non-alphanumeric characters (except underscores)
-        text = re.sub(r'[^a-z0-9_]', '', text)
-        # Remove consecutive underscores
-        text = re.sub(r'_+', '_', text)
-        # Strip leading/trailing underscores
-        text = text.strip('_')
-        return text
-
     # --- MODULE: UTF-8 Text Normalization (BRIEF_06) ---
     def _to_utf8(self, text: str | bytes) -> str:
         """
@@ -331,34 +303,6 @@ class PptxConverter(DocumentConverter):
     # --- END MODULE ---
 
     # --- MODULE: Hierarchical Text Detection (BRIEF_06) ---
-    def _has_bullet_list(self, shape) -> bool:
-        """
-        Check if shape contains hierarchical bullet points.
-        
-        A shape is considered a bullet list if any paragraph
-        has a level > 0 (indented bullets).
-        """
-        if not shape.has_text_frame:
-            return False
-        for para in shape.text_frame.paragraphs:
-            if para.level and para.level > 0:
-                return True
-        return False
-
-    def _get_shape_font_size(self, shape) -> Optional[float]:
-        """
-        Get dominant font size of a text shape.
-        
-        Returns the font size of the first run that has a size defined.
-        """
-        if not shape.has_text_frame:
-            return None
-        for para in shape.text_frame.paragraphs:
-            for run in para.runs:
-                if run.font.size:
-                    return run.font.size.pt
-        return None
-
     def _get_paragraph_font_size(self, para) -> Optional[float]:
         """
         Get font size of a paragraph from its first run with a defined size.
@@ -543,72 +487,6 @@ class PptxConverter(DocumentConverter):
             result.append("\n".join(current_bullets))
         
         return "\n".join(result) + "\n" if result else ""
-
-    def _sort_shapes_by_position(self, shapes: List, slide_height: int) -> List:
-        """
-        Sort shapes by visual position: Y ascending, then X ascending.
-        
-        Groups shapes into Y bands (5% of slide height tolerance)
-        to handle slight vertical misalignment as same "row".
-        
-        Args:
-            shapes: List of shapes with top/left attributes
-            slide_height: Slide height for normalization
-            
-        Returns:
-            List of shapes sorted by position
-        """
-        def position_key(shape):
-            y = shape.top or 0
-            x = shape.left or 0
-            y_band = int((y / slide_height) * 20) if slide_height else 0
-            return (y_band, x)
-        
-        return sorted(shapes, key=position_key)
-
-    def _extract_paragraphs_with_bullets(self, shape) -> str:
-        """
-        Extract text from shape preserving bullet hierarchy.
-        
-        Converts each paragraph to markdown list format based
-        on its indentation level. Level 0 items are treated as bullets
-        unless they have explicit buNone marker.
-        
-        Args:
-            shape: Shape with text_frame
-            
-        Returns:
-            str: Markdown formatted text with bullet lists
-        """
-        if not shape.has_text_frame:
-            return self._to_utf8(shape.text) if hasattr(shape, 'text') else ""
-        
-        # Check if this is a hierarchical bullet list
-        is_hierarchical = any(
-            (para.level or 0) > 0 
-            for para in shape.text_frame.paragraphs
-        )
-        
-        lines = []
-        for para in shape.text_frame.paragraphs:
-            text = self._format_paragraph_text(para).strip()
-            if not text:
-                continue
-            
-            level = para.level or 0
-            indent = "   " * level  # 3 spaces per level for markdown
-            has_no_bullet = self._has_explicit_no_bullet(para)
-            has_explicit_bullet = self._has_explicit_bullet(para)
-            
-            # bullet if: level > 0, or explicit buChar/buAutoNum, or hierarchical without buNone
-            is_bullet = level > 0 or has_explicit_bullet or (is_hierarchical and not has_no_bullet)
-            
-            if is_bullet:
-                lines.append(f"{indent}- {text}")
-            else:
-                lines.append(text)
-        
-        return "\n".join(lines)
     # --- END MODULE ---
 
     # --- MODULE: Path Resolution (BRIEF_06) ---

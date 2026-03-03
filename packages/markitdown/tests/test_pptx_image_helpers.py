@@ -2,7 +2,6 @@
 Tests unitaires pour les fonctions helper du convertisseur PPTX (BRIEF_01).
 
 Tests les fonctions utilitaires sans couverture :
-- _slugify (slugification noms de slides)
 - _is_background_image (détection images de fond)
 - _classify_image_type (classification photo/icon 97% précision)
 - Conversion EMF/WMF → PNG
@@ -20,93 +19,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from markitdown.converters._pptx_converter import PptxConverter
-
-# --- Tests _slugify() ---
-
-
-def test_slugify_basic():
-    """Test slugification basique : espaces et hyphens."""
-    converter = PptxConverter()
-    
-    # Espaces → underscores
-    assert converter._slugify("Hello World") == "hello_world"
-    
-    # Hyphens → underscores
-    assert converter._slugify("Test-Name-123") == "test_name_123"
-    
-    # Mix espaces et hyphens
-    assert converter._slugify("My Test-File Name") == "my_test_file_name"
-
-
-def test_slugify_accents_unicode():
-    """Test normalisation Unicode et suppression accents."""
-    converter = PptxConverter()
-    
-    # Accents français
-    assert converter._slugify("Café Hôtel") == "cafe_hotel"
-    assert converter._slugify("Élève àgé") == "eleve_age"
-    
-    # Caractères spéciaux européens
-    assert converter._slugify("Schön Größe") == "schon_groe"
-    
-    # Espagnol
-    assert converter._slugify("Año Niño") == "ano_nino"
-
-
-def test_slugify_special_characters():
-    """Test suppression caractères spéciaux."""
-    converter = PptxConverter()
-    
-    # Ponctuation
-    assert converter._slugify("Test! Name?") == "test_name"
-    assert converter._slugify("File (copy).txt") == "file_copytxt"
-    
-    # Symboles
-    assert converter._slugify("Price: $100 @2024") == "price_100_2024"
-    
-    # Underscores multiples fusionnés
-    assert converter._slugify("Test___Name") == "test_name"
-
-
-def test_slugify_real_world_examples():
-    """Test cas réels du BRIEF (exemples documentés)."""
-    converter = PptxConverter()
-    
-    # Exemple documenté dans le code
-    assert converter._slugify("Kickoff QA - Essais UAT R1") == "kickoff_qa_essais_uat_r1"
-    
-    # Autres exemples réalistes
-    assert converter._slugify("Slide 1 - Introduction") == "slide_1_introduction"
-    assert converter._slugify("Q4 2025 Results") == "q4_2025_results"
-
-
-def test_slugify_edge_cases():
-    """Test edge cases."""
-    converter = PptxConverter()
-    
-    # Chaîne vide
-    assert converter._slugify("") == ""
-    
-    # Uniquement espaces
-    assert converter._slugify("   ") == ""
-    
-    # Uniquement caractères spéciaux
-    assert converter._slugify("!!!???") == ""
-    
-    # Leading/trailing underscores supprimés
-    assert converter._slugify("  Test  ") == "test"
-    assert converter._slugify("_Test_") == "test"
-
-
-def test_slugify_numbers():
-    """Test préservation des nombres."""
-    converter = PptxConverter()
-    
-    # Nombres préservés
-    assert converter._slugify("Slide 123") == "slide_123"
-    assert converter._slugify("Version 2.0") == "version_20"
-    assert converter._slugify("2024-Q4") == "2024_q4"
-
 
 # --- Tests _is_background_image() ---
 
