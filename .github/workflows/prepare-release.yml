@@ -1,0 +1,195 @@
+# =============================================================================
+# Prepare Release Branch - Nettoyage automatique avant PR vers main
+# =============================================================================
+# Ce workflow prépare une branche release propre en:
+# 1. Copiant develop vers release
+# 2. Supprimant les fichiers personnels (.copilot-tracking, .vscode, etc.)
+# 3. Restaurant les dossiers depuis main (workflows GitHub, etc.)
+# 4. Conservant uniquement le code production
+
+name: Prepare Release Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: 'Branche source à releaser'
+        required: true
+        default: 'develop'
+        type: string
+      dry_run:
+        description: 'Mode test (pas de push)'
+        type: boolean
+        default: false
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_branch }}
+          fetch-depth: 0
+
+      - name: Setup Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install yq for YAML parsing
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Create/update release branch from source
+        run: |
+          echo "📦 Creating release branch from ${{ inputs.source_branch }}..."
+          git checkout -B release
+          echo "✅ Release branch created"
+
+      - name: Load configuration
+        id: config
+        run: |
+          CONFIG_FILE=".github/release-config.yml"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ Configuration file not found: $CONFIG_FILE"
+            exit 1
+          fi
+          echo "📋 Configuration loaded from $CONFIG_FILE"
+
+      - name: Reset hidden directories from main
+        run: |
+          echo "🧹 Resetting hidden directories from main..."
+          
+          CONFIG_FILE=".github/release-config.yml"
+          RESET_DIRS=$(yq '.reset_from_main[]' "$CONFIG_FILE" 2>/dev/null || echo "")
+          
+          for dir in $RESET_DIRS; do
+            echo "  Processing: $dir"
+            
+            # Supprimer le dossier actuel s'il existe
+            if [ -e "$dir" ]; then
+              git rm -rf "$dir" 2>/dev/null || rm -rf "$dir"
+              echo "    ✓ Removed from release"
+            fi
+            
+            # Restaurer depuis main si existe
+            if git ls-tree -d main --name-only 2>/dev/null | grep -q "^${dir}$"; then
+              git checkout main -- "$dir" 2>/dev/null || true
+              echo "    ✓ Restored from main"
+            else
+              echo "    ℹ Does not exist in main (removed)"
+            fi
+          done
+
+      - name: Remove files not in main (root level)
+        run: |
+          echo "🧹 Cleaning root files not in main..."
+          
+          # Fichiers dans main (racine uniquement, sans dossiers)
+          git ls-tree main --name-only 2>/dev/null | grep -v '/' > /tmp/main-root.txt || touch /tmp/main-root.txt
+          
+          # Fichiers dans release (racine uniquement)
+          git ls-tree HEAD --name-only 2>/dev/null | grep -v '/' > /tmp/release-root.txt || touch /tmp/release-root.txt
+          
+          # Fichiers à toujours supprimer
+          CONFIG_FILE=".github/release-config.yml"
+          ALWAYS_REMOVE=$(yq '.always_remove[]' "$CONFIG_FILE" 2>/dev/null || echo "")
+          
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            
+            # Vérifier si c'est un dossier (packages, etc.) - ne pas supprimer
+            if [ -d "$file" ]; then
+              continue
+            fi
+            
+            # Vérifier si dans always_remove
+            for remove_pattern in $ALWAYS_REMOVE; do
+              if [[ "$file" == $remove_pattern ]]; then
+                echo "  Removing (always_remove): $file"
+                git rm -f "$file" 2>/dev/null || true
+                continue 2
+              fi
+            done
+            
+            # Vérifier si absent de main
+            if ! grep -Fxq "$file" /tmp/main-root.txt; then
+              echo "  Removing (not in main): $file"
+              git rm -f "$file" 2>/dev/null || true
+            fi
+          done < /tmp/release-root.txt
+
+      - name: Verify packages files are preserved
+        run: |
+          echo "✅ Verifying packages/ files..."
+          
+          CONFIG_FILE=".github/release-config.yml"
+          KEEP_FILES=$(yq '.keep_packages[]' "$CONFIG_FILE" 2>/dev/null || echo "")
+          
+          for file in $KEEP_FILES; do
+            if [ -f "$file" ]; then
+              echo "  ✓ Preserved: $file"
+            else
+              echo "  ⚠ Missing: $file (may not exist in source branch)"
+            fi
+          done
+
+      - name: Commit cleanup
+        id: commit
+        run: |
+          git add -A
+          
+          if git diff --staged --quiet; then
+            echo "ℹ️ No changes to commit - release is already clean"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            git commit -m "chore: prepare release - clean personal files
+
+            Automated cleanup from ${{ inputs.source_branch }}:
+            - Reset .github/, .vscode/, .copilot-tracking/ from main
+            - Removed root files not in main
+            - Preserved packages/ source code"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push release branch
+        if: ${{ inputs.dry_run == false && steps.commit.outputs.has_changes == 'true' }}
+        run: |
+          git push -f origin release
+          echo "✅ Release branch pushed to origin/release"
+          echo ""
+          echo "📝 Next steps:"
+          echo "   1. Create PR: release → main"
+          echo "   2. Review changes"
+          echo "   3. Merge PR"
+
+      - name: Dry run summary
+        if: ${{ inputs.dry_run == true }}
+        run: |
+          echo "🔍 DRY RUN - Changes NOT pushed"
+          echo ""
+          echo "📊 Summary of changes:"
+          git log --oneline -1
+          echo ""
+          echo "📁 Files in release branch:"
+          git ls-tree -r HEAD --name-only | head -50
+          echo ""
+          if [ $(git ls-tree -r HEAD --name-only | wc -l) -gt 50 ]; then
+            echo "... and more files"
+          fi
+
+      - name: Final status
+        run: |
+          echo ""
+          echo "========================================="
+          echo "📦 Release Preparation Complete"
+          echo "========================================="
+          echo "Source: ${{ inputs.source_branch }}"
+          echo "Target: release"
+          echo "Dry run: ${{ inputs.dry_run }}"
+          echo "========================================="
