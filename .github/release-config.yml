@@ -18,7 +18,6 @@ keep_packages:
   - packages/markitdown-mcp/src/markitdown_mcp/server.py
   - packages/markitdown-mcp/src/markitdown_mcp/tools.py
   - packages/markitdown-mcp/src/markitdown_mcp/utils.py
-  - packages/markitdown-mcp/tests/test_vision_enhancement_helpers.py
   
   # Markitdown - nouveaux tests
   - packages/markitdown/tests/test_pptx_image_helpers.py
