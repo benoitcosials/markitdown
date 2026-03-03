@@ -40,6 +40,15 @@ async def convert_to_markdown(
         
     Returns:
         Markdown content
+    
+    PPTX-specific features (automatic):
+        - SmartArt: Extracted as hierarchical bullet lists or tables with images
+        - Tables: Cell colors shown as emoji (🔴🟢🔵), embedded/floating images extracted
+        - Hyperlinks: Preserved as [text](url) in all text elements
+        - Text styles: Bold, italic, strikethrough, underline converted to Markdown
+        - Headings: Auto-detected from font size hierarchy within slides
+        - Image deduplication: MD5 hash prevents duplicate image files
+        - EMF/WMF conversion: Windows metafiles converted to PNG when PIL available
         
     Example:
         >>> result = await convert_to_markdown(
