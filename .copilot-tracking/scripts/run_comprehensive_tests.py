@@ -125,10 +125,10 @@ def process_single_pptx(pptx_file_path, output_parent_dir=None):
 
 
 def run_comprehensive_tests():
-    """Run extraction tests on all PPTX files in pptx-test/ directory."""
+    """Run extraction tests on all PPTX files in .copilot-tracking/pptx/ directory."""
     
     # Prepare directories
-    test_pptx_dir = Path("pptx-test")  # Source directory with PPTX files (DO NOT DELETE)
+    test_pptx_dir = Path(".copilot-tracking/pptx")  # Source directory with PPTX files
     pptx_result_dir = Path("pptx-result")
     pptx_result_dir.mkdir(exist_ok=True)
     
