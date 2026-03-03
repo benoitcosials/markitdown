@@ -12,13 +12,13 @@ from pathlib import Path
 from typing import Optional
 
 
-def resolve_image_dir_for_file_uri(
+def resolve_image_path_for_file_uri(
     uri: str,
-    image_dir: Optional[str],
+    image_path: Optional[str],
     output_images: bool
 ) -> Optional[str]:
     """
-    Resolve image directory relative to source file for file:// URIs.
+    Resolve image path relative to source file for file:// URIs.
     
     For file:// URIs, images should be saved relative to the source file's
     directory, not the current working directory. This ensures predictable
@@ -29,23 +29,23 @@ def resolve_image_dir_for_file_uri(
     
     Args:
         uri: Source file URI (e.g., "file:///C:/docs/presentation.pptx")
-        image_dir: Requested image directory name (relative or absolute)
+        image_path: Requested image directory/path (relative or absolute)
         output_images: Whether images should be saved to disk
         
     Returns:
         Resolved absolute path to image directory, or None if not applicable.
         For file:// URIs, returns path relative to source file's parent directory.
-        For non-file URIs or when output_images=False, returns image_dir unchanged.
+        For non-file URIs or when output_images=False, returns image_path unchanged.
         
     Example:
-        >>> resolve_image_dir_for_file_uri(
+        >>> resolve_image_path_for_file_uri(
         ...     "file:///C:/docs/presentation.pptx",
         ...     "images",
         ...     True
         ... )
         'C:/docs/images'
         
-        >>> resolve_image_dir_for_file_uri(
+        >>> resolve_image_path_for_file_uri(
         ...     "https://example.com/file.pptx",
         ...     "images",
         ...     True
@@ -58,7 +58,7 @@ def resolve_image_dir_for_file_uri(
     
     # Only process file:// URIs
     if not uri.startswith("file://"):
-        return image_dir
+        return image_path
     
     try:
         # Parse file:// URI to extract OS path
@@ -69,9 +69,9 @@ def resolve_image_dir_for_file_uri(
         # Get parent directory of source file
         base_dir = source_file.parent
         
-        # Resolve image_dir relative to source file's directory
-        if image_dir:
-            resolved_path = base_dir / image_dir
+        # Resolve image_path relative to source file's directory
+        if image_path:
+            resolved_path = base_dir / image_path
         else:
             # Default to "images" subdirectory
             resolved_path = base_dir / "images"
@@ -79,10 +79,10 @@ def resolve_image_dir_for_file_uri(
         return str(resolved_path)
     
     except (ValueError, OSError) as e:
-        # Fallback to original image_dir if URI parsing fails
+        # Fallback to original image_path if URI parsing fails
         # Log warning but don't raise - graceful degradation
-        print(f"Warning: Failed to parse file URI for directory context: {e}")
-        return image_dir
+        print(f"Warning: Failed to parse file URI for path context: {e}")
+        return image_path
 
 
 def check_plugins_enabled() -> bool:
