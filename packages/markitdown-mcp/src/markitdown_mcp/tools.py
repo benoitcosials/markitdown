@@ -67,7 +67,7 @@ async def convert_to_markdown(
     # Step 3: Prepare conversion arguments
     kwargs = {
         "output_images": output_images,
-        "image_dir": adjusted_image_dir,
+        "image_path": adjusted_image_dir,
         "skip_background_images": skip_background_images,
         "skip_icon_images": skip_icon_images,
     }
