@@ -11,10 +11,6 @@ reset_from_main:
   - .copilot-tracking
   - .devcontainer
 
-# Fichiers/dossiers racine à toujours supprimer (même s'ils n'existent pas dans main)
-always_remove:
-  - .cursorrules
-
 # Fichiers packages/ ajoutés (non présents dans main) à conserver
 # Ces fichiers représentent les nouvelles fonctionnalités développées
 keep_packages:

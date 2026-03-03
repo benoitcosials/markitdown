@@ -96,10 +96,6 @@ jobs:
           # Fichiers dans release (racine uniquement)
           git ls-tree HEAD --name-only 2>/dev/null | grep -v '/' > /tmp/release-root.txt || touch /tmp/release-root.txt
           
-          # Fichiers à toujours supprimer
-          CONFIG_FILE=".github/release-config.yml"
-          ALWAYS_REMOVE=$(yq '.always_remove[]' "$CONFIG_FILE" 2>/dev/null || echo "")
-          
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             
@@ -107,15 +103,6 @@ jobs:
             if [ -d "$file" ]; then
               continue
             fi
-            
-            # Vérifier si dans always_remove
-            for remove_pattern in $ALWAYS_REMOVE; do
-              if [[ "$file" == $remove_pattern ]]; then
-                echo "  Removing (always_remove): $file"
-                git rm -f "$file" 2>/dev/null || true
-                continue 2
-              fi
-            done
             
             # Vérifier si absent de main
             if ! grep -Fxq "$file" /tmp/main-root.txt; then
