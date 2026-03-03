@@ -11,7 +11,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .utils import (
     check_plugins_enabled,
-    resolve_image_dir_for_file_uri,
+    resolve_image_path_for_file_uri,
 )
 
 # Initialize FastMCP server instance
@@ -22,7 +22,7 @@ mcp = FastMCP("markitdown")
 async def convert_to_markdown(
     uri: str,
     output_images: bool = True,
-    image_dir: str = "images",
+    image_path: str = "images",
     skip_background_images: bool = True,
     skip_icon_images: bool = False,
 ) -> str:
@@ -34,7 +34,7 @@ async def convert_to_markdown(
     Args:
         uri: File URI (file://, http://, https://) or local path to convert
         output_images: Save images from PPTX/DOCX to separate files (default: True)
-        image_dir: Directory for saved images, relative to source file (default: "images")
+        image_path: Directory or path for saved images, relative to source file (default: "images")
         skip_background_images: Skip PowerPoint background placeholder images (default: True)
         skip_icon_images: Skip icon images, extract only photos (default: False)
         
@@ -56,9 +56,9 @@ async def convert_to_markdown(
         ...     output_images=True
         ... )
     """
-    # Step 1: Resolve image_dir relative to source file for file:// URIs
-    adjusted_image_dir = resolve_image_dir_for_file_uri(
-        uri, image_dir, output_images
+    # Step 1: Resolve image_path relative to source file for file:// URIs
+    adjusted_image_path = resolve_image_path_for_file_uri(
+        uri, image_path, output_images
     )
     
     # Step 2: Check if plugins are enabled via environment variable
@@ -67,7 +67,7 @@ async def convert_to_markdown(
     # Step 3: Prepare conversion arguments
     kwargs = {
         "output_images": output_images,
-        "image_path": adjusted_image_dir,
+        "image_path": adjusted_image_path,
         "skip_background_images": skip_background_images,
         "skip_icon_images": skip_icon_images,
     }
