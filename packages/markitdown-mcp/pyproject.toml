@@ -46,6 +46,9 @@ Source = "https://github.com/microsoft/markitdown"
 [tool.hatch.version]
 path = "src/markitdown_mcp/__about__.py"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [project.scripts]
 markitdown-mcp = "markitdown_mcp.__main__:main"
 
