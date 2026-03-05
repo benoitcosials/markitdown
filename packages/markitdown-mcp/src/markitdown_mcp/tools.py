@@ -34,11 +34,13 @@ def _get_source_filename(uri: str) -> str:
     return Path(path).stem
 
 
-def _make_image_links_relative(markdown: str) -> str:
-    """Convert image paths in markdown to filenames only."""
+def _make_image_links_relative(markdown: str, prefix: str = "") -> str:
+    """Convert image paths in markdown to relative paths with optional prefix."""
     def replace_path(match):
         full_path = match.group(1)
         filename = Path(full_path.replace('\\', '/')).name
+        if prefix:
+            return f'![]({prefix}/{filename})'
         return f'![]({filename})'
     
     return re.sub(r'!\[\]\(([^)]+)\)', replace_path, markdown)
@@ -66,9 +68,10 @@ async def convert_to_markdown(
             - Data URIs: "data:application/pdf;base64,..."
             Local paths are automatically converted to file:// URIs.
         output_path: Directory for the output markdown file. If not specified,
-            uses image_path if provided, otherwise a temporary directory.
-        image_path: Directory for extracted images. If not specified,
-            uses output_path if provided, otherwise a temporary directory.
+            a temporary directory is used.
+        image_path: Directory for extracted images. If not specified, images are
+            automatically placed in output_path/.attachments/ (or temp/.attachments/) with
+            relative links (.attachments/filename.png) in the markdown.
         output_images: Save images from PPTX/DOCX to separate files (default: True)
         skip_background_images: Skip PowerPoint background placeholder images (default: True)
         skip_icon_images: Skip icon images, extract only photos (default: False)
@@ -135,10 +138,12 @@ async def convert_to_markdown(
         else:
             logs.append(f"Warning: URI scheme not recognized: {uri[:20]}...")
     
-    # Step 1: Determine output directories (independent logic)
-    # output_path specified → MD goes there, otherwise temp
-    # image_path specified → images go there, otherwise temp
+    # Step 1: Determine output directories with automatic fallback
+    # - output_path specified → MD goes there
+    # - image_path specified → images go there (absolute links)
+    # - image_path NOT specified → images go to output_dir/.attachments/ (relative links)
     use_relative_links = image_path is None
+    image_subdir = ".attachments"  # Subdirectory name for auto-fallback
     
     if output_path:
         output_dir = Path(output_path)
@@ -160,14 +165,14 @@ async def convert_to_markdown(
             img_dir.mkdir(parents=True, exist_ok=True)
             logs.append(f"Using image directory: {img_dir}")
         except (PermissionError, OSError) as e:
-            img_dir = Path(tempfile.mkdtemp(prefix="markitdown_images_"))
-            is_temp_dir = True
+            img_dir = output_dir / image_subdir
+            img_dir.mkdir(parents=True, exist_ok=True)
             use_relative_links = True
-            logs.append(f"Cannot write to {image_path}: {e}, using temp: {img_dir}")
+            logs.append(f"Cannot write to {image_path}: {e}, fallback to: {img_dir}")
     else:
-        img_dir = Path(tempfile.mkdtemp(prefix="markitdown_images_"))
-        is_temp_dir = True
-        logs.append(f"No image_path, using temp directory: {img_dir}")
+        img_dir = output_dir / image_subdir
+        img_dir.mkdir(parents=True, exist_ok=True)
+        logs.append(f"No image_path, using auto-fallback: {img_dir}")
     
     # Step 2: Check if plugins are enabled via environment variable
     enable_plugins = check_plugins_enabled()
@@ -186,10 +191,10 @@ async def convert_to_markdown(
     
     # Step 5: Adjust image links based on image_path
     # If image_path specified → keep full paths
-    # If not specified → use relative filenames only
+    # If not specified → use relative links with images/ prefix
     if use_relative_links:
-        markdown_content = _make_image_links_relative(result.markdown)
-        logs.append("Image links converted to relative filenames")
+        markdown_content = _make_image_links_relative(result.markdown, prefix=image_subdir)
+        logs.append(f"Image links converted to relative: {image_subdir}/filename")
     else:
         markdown_content = result.markdown
         logs.append("Image links kept as full paths")
