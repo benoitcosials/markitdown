@@ -4,6 +4,7 @@
       "type": "stdio",
       "command": "uvx",
       "args": [
+        "--refresh",
         "--from",
         "git+https://github.com/benoitcosials/markitdown.git@develop#subdirectory=packages/markitdown-mcp",
         "markitdown-mcp"
