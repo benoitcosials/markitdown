@@ -7,7 +7,6 @@ support for multiple formats and optional image extraction.
 """
 
 import json
-import os
 import re
 import tempfile
 import urllib.parse
