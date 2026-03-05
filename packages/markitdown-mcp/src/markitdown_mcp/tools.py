@@ -38,7 +38,12 @@ async def convert_to_markdown(
     Supports: PPTX, DOCX, PDF, HTML, XLSX, CSV, JSON, Images, Audio.
     
     Args:
-        uri: File URI (file://, http://, https://) or local path to convert
+        uri: File path or URI to convert. Accepts:
+            - Local paths: "C:\\docs\\file.pptx" or "/home/user/file.pptx"
+            - File URIs: "file:///C:/docs/file.pptx"
+            - HTTP/HTTPS: "https://example.com/file.docx"
+            - Data URIs: "data:application/pdf;base64,..."
+            Local paths are automatically converted to file:// URIs.
         output_images: Save images from PPTX/DOCX to separate files (default: True)
         image_path: Directory or path for saved images, relative to source file (default: "images")
         skip_background_images: Skip PowerPoint background placeholder images (default: True)
@@ -92,6 +97,26 @@ async def convert_to_markdown(
     logs: list[str] = []
     extracted_images: list[dict[str, Any]] = []
     final_image_dir: str | None = None
+    
+    # Step 0: Auto-convert local paths to file:// URIs
+    # Handles Windows paths (C:\...) and Unix absolute paths (/...)
+    original_uri = uri
+    if not any(uri.startswith(scheme) for scheme in ['file:', 'http:', 'https:', 'data:']):
+        # Check if it looks like a local path
+        is_windows_path = len(uri) >= 2 and uri[1] == ':' and uri[0].isalpha()
+        is_unix_path = uri.startswith('/')
+        
+        if is_windows_path or is_unix_path:
+            # Convert to file:// URI
+            import urllib.parse
+            normalized = uri.replace('\\', '/')
+            if is_windows_path:
+                uri = f"file:///{urllib.parse.quote(normalized, safe='/:')}"
+            else:
+                uri = f"file://{urllib.parse.quote(normalized, safe='/')}"
+            logs.append(f"Auto-converted path to URI: {original_uri} -> {uri}")
+        else:
+            logs.append(f"Warning: URI scheme not recognized: {uri[:20]}...")
     
     # Step 1: Resolve image_path relative to source file for file:// URIs
     adjusted_image_path = resolve_image_path_for_file_uri(
