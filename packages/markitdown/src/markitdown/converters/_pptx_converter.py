@@ -1635,6 +1635,44 @@ class PptxConverter(DocumentConverter):
         # Fallback to PNG
         return '.png'
 
+    def _save_image_bytes(
+        self,
+        image_bytes: bytes,
+        filename: str,
+        image_dir: str,
+        output_base: Optional[str] = None,
+        image_path_raw: Optional[str] = None,
+        caller_manages_links: bool = False
+    ) -> tuple[str, bool]:
+        """
+        Central helper to save image bytes to disk with deduplication.
+        
+        Args:
+            image_bytes: Raw image data
+            filename: Target filename (with extension)
+            image_dir: Destination folder (absolute path)
+            output_base: Base directory for relative path calculation
+            image_path_raw: Original image_path parameter from caller
+            caller_manages_links: If True, use paths as provided by caller
+        
+        Returns:
+            tuple: (image_link, was_deduplicated)
+        """
+        image_hash = hashlib.md5(image_bytes).hexdigest()
+        if image_hash in self._image_hashes:
+            return self._image_hashes[image_hash], True
+        
+        disk_path = Path(image_dir) / filename
+        os.makedirs(image_dir, exist_ok=True)
+        with open(disk_path, 'wb') as f:
+            f.write(image_bytes)
+        
+        img_link = self._get_relative_image_link(
+            str(disk_path), output_base, image_path_raw, caller_manages_links
+        )
+        self._image_hashes[image_hash] = img_link
+        return img_link, False
+
     def _save_image(
         self,
         shape,
@@ -2018,41 +2056,17 @@ class PptxConverter(DocumentConverter):
                     except KeyError:
                         continue
                     
-                    # Deduplication using MD5 hash
-                    image_hash = hashlib.md5(image_bytes).hexdigest()
-                    if image_hash in self._image_hashes:
-                        saved_path = self._image_hashes[image_hash]
-                        image_refs.append(f"![]({saved_path})")
-                        continue
-                    
-                    # Determine extension
                     ext = '.' + media_path.split('.')[-1].lower()
-                    
-                    # Sanitize table name for filename
                     safe_table_name = re.sub(r'[^\w\-]', '_', table_name)
-                    
-                    # Generate filename
-                    img_filename = (
+                    filename = (
                         f"slide{slide_num}_{safe_table_name}_"
                         f"cell{row_idx}x{col_idx}_img{img_idx}{ext}"
                     )
                     
-                    # Build paths - save to disk with absolute path
-                    img_path_obj = Path(image_dir) / img_filename
-                    disk_path = str(img_path_obj)
-                    
-                    # Create directory and save
-                    os.makedirs(image_dir, exist_ok=True)
-                    with open(disk_path, 'wb') as f:
-                        f.write(image_bytes)
-                    
-                    # Generate link using shared function
-                    img_link = self._get_relative_image_link(
-                        disk_path, output_base, image_path_raw, caller_manages_links
+                    img_link, was_dup = self._save_image_bytes(
+                        image_bytes, filename, image_dir,
+                        output_base, image_path_raw, caller_manages_links
                     )
-                    
-                    # Register in hash map
-                    self._image_hashes[image_hash] = img_link
                     image_refs.append(f"![]({img_link})")
             
         except Exception:
@@ -2149,36 +2163,15 @@ class PptxConverter(DocumentConverter):
                 if hasattr(shape, 'image') and shape.image:
                     image_bytes = shape.image.blob
                     ext = shape.image.ext or 'png'
-                    
-                    # Sanitize table name for filename
                     safe_table_name = re.sub(r'[^\w\-]', '_', table_name)
+                    filename = f"slide{slide_num}_{safe_table_name}_cell{row_idx}_{col_idx}.{ext}"
                     
-                    # Generate unique filename
-                    img_name = f"slide{slide_num}_{safe_table_name}_cell{row_idx}_{col_idx}"
+                    img_link, _ = self._save_image_bytes(
+                        image_bytes, filename, image_dir,
+                        output_base, image_path_raw, caller_manages_links
+                    )
                     
-                    # Check for duplicate
-                    image_hash = hashlib.md5(image_bytes).hexdigest()
-                    if image_hash in self._image_hashes:
-                        img_link = self._image_hashes[image_hash]
-                    else:
-                        # Save to disk with absolute path
-                        disk_path = f"{image_dir}/{img_name}.{ext}"
-                        
-                        os.makedirs(image_dir, exist_ok=True)
-                        with open(disk_path, 'wb') as f:
-                            f.write(image_bytes)
-                        
-                        # Generate link using shared function
-                        img_link = self._get_relative_image_link(
-                            disk_path, output_base, image_path_raw, caller_manages_links
-                        )
-                        
-                        self._image_hashes[image_hash] = img_link
-                    
-                    # Use alt text if available
                     alt_text = shape.name or ""
-                    
-                    # Add to cell mapping
                     key = (row_idx, col_idx)
                     if key not in cell_images:
                         cell_images[key] = []

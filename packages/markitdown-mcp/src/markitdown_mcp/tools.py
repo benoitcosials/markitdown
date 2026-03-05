@@ -37,13 +37,14 @@ def _get_source_filename(uri: str) -> str:
 def _make_image_links_relative(markdown: str, prefix: str = "") -> str:
     """Convert image paths in markdown to relative paths with optional prefix."""
     def replace_path(match):
-        full_path = match.group(1)
+        alt_text = match.group(1)
+        full_path = match.group(2)
         filename = Path(full_path.replace('\\', '/')).name
         if prefix:
-            return f'![]({prefix}/{filename})'
-        return f'![]({filename})'
+            return f'![{alt_text}]({prefix}/{filename})'
+        return f'![{alt_text}]({filename})'
     
-    return re.sub(r'!\[\]\(([^)]+)\)', replace_path, markdown)
+    return re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', replace_path, markdown)
 
 
 @mcp.tool()
