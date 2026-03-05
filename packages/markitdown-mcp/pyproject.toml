@@ -25,7 +25,17 @@ classifiers = [
 ]
 dependencies = [
   "mcp~=1.8.0",
-  "markitdown[all] @ git+https://github.com/benoitcosials/markitdown.git@develop#subdirectory=packages/markitdown",
+  "markitdown @ git+https://github.com/benoitcosials/markitdown.git@develop#subdirectory=packages/markitdown",
+  # Optional dependencies for full PPTX support (same as markitdown[all])
+  "python-pptx",
+  "python-docx",
+  "mammoth",
+  "pdfminer.six",
+  "pandas",
+  "openpyxl",
+  "Pillow",
+  "puremagic",
+  "charset-normalizer",
 ]
 
 [project.urls]
