@@ -25,7 +25,7 @@ classifiers = [
 ]
 dependencies = [
   "mcp~=1.8.0",
-  "markitdown[all]>=0.1.1,<0.2.0",
+  "markitdown[all] @ git+https://github.com/benoitcosials/markitdown.git@develop#subdirectory=packages/markitdown",
 ]
 
 [project.urls]
