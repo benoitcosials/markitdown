@@ -25,18 +25,11 @@ classifiers = [
 ]
 dependencies = [
   "mcp~=1.8.0",
-  "markitdown @ git+https://github.com/benoitcosials/markitdown.git@develop#subdirectory=packages/markitdown",
-  # Optional dependencies for full PPTX support (same as markitdown[all])
-  "python-pptx",
-  "python-docx",
-  "mammoth",
-  "pdfminer.six",
-  "pandas",
-  "openpyxl",
-  "Pillow",
-  "puremagic",
-  "charset-normalizer",
+  "markitdown[all] @ git+https://github.com/benoitcosials/markitdown.git@develop#subdirectory=packages/markitdown",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [project.urls]
 Documentation = "https://github.com/microsoft/markitdown#readme"
@@ -45,9 +38,6 @@ Source = "https://github.com/microsoft/markitdown"
 
 [tool.hatch.version]
 path = "src/markitdown_mcp/__about__.py"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [project.scripts]
 markitdown-mcp = "markitdown_mcp.__main__:main"
