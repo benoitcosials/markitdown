@@ -2290,7 +2290,7 @@ class PptxConverter(DocumentConverter):
                     color_info = self._get_cell_fill_color(cell)
                     if color_info:
                         emoji, color_name = color_info
-                        cell_parts.append(emoji)
+                        cell_parts.insert(0, emoji)
                 
                 # Combine all parts
                 cell_content = " ".join(cell_parts) if cell_parts else ""
