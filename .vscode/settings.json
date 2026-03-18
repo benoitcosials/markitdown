@@ -16,13 +16,6 @@
     "python": true
   },
   
-  // ========================================
-  // Python - Configuration Projet MarkItDown
-  // ========================================
-  
-  // Interpréteur Python (Windows)
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
-  
   // Ruff : Linter et formatter moderne (10-100x plus rapide que flake8)
   // IMPORTANT : Extension Ruff doit être installée (charliermarsh.ruff)
   "[python]" : {
