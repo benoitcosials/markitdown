@@ -703,6 +703,8 @@ class PptxConverter(DocumentConverter):
             content_items = []
             
             for shape in text_shapes:
+                if not shape.text_frame.text.strip():
+                    continue
                 y = shape.top or 0
                 x = shape.left or 0
                 content_items.append((y, x, 'text', shape))
@@ -727,34 +729,11 @@ class PptxConverter(DocumentConverter):
                 x = shape.left or 0
                 content_items.append((y, x, 'picture', shape))
             
-            # Sort content items by position
-            # Detect if slide has columns (significant X variance)
+            # Sort content items using X-Y Cut recursive layout detection
             slide_width = presentation.slide_width or 1
-            
-            if content_items:
-                x_values = [x for _, x, _, _ in content_items]
-                x_min, x_max = min(x_values), max(x_values)
-                x_spread = (x_max - x_min) / slide_width if slide_width else 0
-                
-                # If X spread > 40% of slide width, treat as multi-column layout
-                has_columns = x_spread > 0.4
-            else:
-                has_columns = False
-            
-            if has_columns:
-                # Multi-column: sort by X-band (column) first, then Y within each column
-                def column_position_key(item):
-                    y, x, _, _ = item
-                    x_band = int((x / slide_width) * 10) if slide_width else 0  # 10% bands
-                    return (x_band, y)
-                content_items.sort(key=column_position_key)
-            else:
-                # Single column: sort by Y-band then X
-                def position_key(item):
-                    y, x, _, _ = item
-                    y_band = int((y / slide_height) * 20) if slide_height else 0
-                    return (y_band, x)
-                content_items.sort(key=position_key)
+            content_items = self._xy_cut_sort(
+                content_items, slide_width, slide_height
+            )
             
             # 3.3 Process all content in visual order
             for y, x, item_type, shape in content_items:
@@ -1016,6 +995,153 @@ class PptxConverter(DocumentConverter):
         # Threshold: 20 KB (100% accurate on 14 ambiguous samples)
         size_kb = len(shape.image.blob) / 1024
         return 'icon' if size_kb < 20 else 'photo'
+    # --- END MODULE ---
+
+    # --- MODULE: X-Y Cut Layout Detection (BRIEF_07) ---
+    def _find_largest_gap(
+        self, starts: list[int], ends: list[int]
+    ) -> tuple[int, int, int] | None:
+        """
+        Find the largest gap between 1D projections of bounding boxes.
+
+        Uses a sweep line: when overlap depth reaches 0, a gap starts;
+        when it rises above 0, the gap ends.
+
+        Args:
+            starts: Left/top coordinates of each shape (EMU).
+            ends: Right/bottom coordinates of each shape (EMU).
+
+        Returns:
+            (gap_start, gap_end, gap_size) of the largest gap,
+            or None if no gap exists.
+        """
+        events: list[tuple[int, int]] = []
+        for s, e in zip(starts, ends):
+            events.append((s, 1))
+            events.append((e, -1))
+        events.sort()
+
+        depth = 0
+        prev = 0
+        best: tuple[int, int, int] | None = None
+
+        for pos, delta in events:
+            if depth == 0 and pos > prev and prev > 0:
+                gap_size = pos - prev
+                if best is None or gap_size > best[2]:
+                    best = (prev, pos, gap_size)
+            depth += delta
+            prev = pos
+
+        return best
+
+    def _xy_cut_sort(
+        self,
+        content_items: list,
+        slide_width: int,
+        slide_height: int,
+        min_gap_ratio: float = 0.02,
+    ) -> list:
+        """
+        Sort shapes in reading order using recursive X-Y Cut.
+
+        Finds the largest vertical or horizontal empty gap between
+        shape bounding boxes, splits into two groups, and recurses.
+        When no significant gap remains, falls back to positional sort.
+
+        Args:
+            content_items: List of (y, x, type, shape) tuples.
+            slide_width: Presentation slide width in EMU.
+            slide_height: Presentation slide height in EMU.
+            min_gap_ratio: Minimum gap/dimension ratio to trigger
+                a split (default 2%).
+
+        Returns:
+            content_items sorted in visual reading order.
+        """
+        if len(content_items) <= 1:
+            return list(content_items)
+
+        lefts = []
+        rights = []
+        tops = []
+        bottoms = []
+        for _, _, _, shape in content_items:
+            lefts.append(shape.left or 0)
+            rights.append((shape.left or 0) + (shape.width or 0))
+            tops.append(shape.top or 0)
+            bottoms.append((shape.top or 0) + (shape.height or 0))
+
+        v_gap = self._find_largest_gap(lefts, rights)
+        h_gap = self._find_largest_gap(tops, bottoms)
+
+        v_ratio = (v_gap[2] / slide_width) if v_gap else 0.0
+        h_ratio = (h_gap[2] / slide_height) if h_gap else 0.0
+        best_ratio = max(v_ratio, h_ratio)
+
+        if best_ratio > min_gap_ratio:
+            if v_ratio >= h_ratio:
+                split_pos = v_gap[0]  # type: ignore[index]
+                left_group = [
+                    item for item, r in zip(content_items, rights)
+                    if r <= split_pos
+                ]
+                right_group = [
+                    item for item, l in zip(content_items, lefts)
+                    if l >= split_pos
+                ]
+                # Shapes overlapping the gap go to the nearest side
+                for item, l, r in zip(content_items, lefts, rights):
+                    if r > split_pos and l < split_pos:
+                        mid = (l + r) // 2
+                        if mid < split_pos:
+                            left_group.append(item)
+                        else:
+                            right_group.append(item)
+                return (
+                    self._xy_cut_sort(
+                        left_group, slide_width, slide_height,
+                        min_gap_ratio
+                    )
+                    + self._xy_cut_sort(
+                        right_group, slide_width, slide_height,
+                        min_gap_ratio
+                    )
+                )
+            else:
+                split_pos = h_gap[0]  # type: ignore[index]
+                top_group = [
+                    item for item, b in zip(content_items, bottoms)
+                    if b <= split_pos
+                ]
+                bottom_group = [
+                    item for item, t in zip(content_items, tops)
+                    if t >= split_pos
+                ]
+                for item, t, b in zip(content_items, tops, bottoms):
+                    if b > split_pos and t < split_pos:
+                        mid = (t + b) // 2
+                        if mid < split_pos:
+                            top_group.append(item)
+                        else:
+                            bottom_group.append(item)
+                return (
+                    self._xy_cut_sort(
+                        top_group, slide_width, slide_height,
+                        min_gap_ratio
+                    )
+                    + self._xy_cut_sort(
+                        bottom_group, slide_width, slide_height,
+                        min_gap_ratio
+                    )
+                )
+
+        # Fallback: top first, smaller shapes first, then left-to-right
+        def fallback_key(item):
+            _, _, _, s = item
+            return (s.top or 0, (s.top or 0) + (s.height or 0), s.left or 0)
+
+        return sorted(content_items, key=fallback_key)
     # --- END MODULE ---
 
     # --- MODULE: SmartArt Detection (BRIEF_05) ---
