@@ -1351,6 +1351,16 @@ class PptxConverter(DocumentConverter):
         except Exception:
             pass
         
+        # Normalize levels so minimum becomes 0
+        # (doc root node inflates all data node depths by 1+)
+        if nodes_with_text:
+            min_level = min(level for _, level, _, _ in nodes_with_text)
+            if min_level > 0:
+                nodes_with_text = [
+                    (text, level - min_level, node_id, is_asst)
+                    for text, level, node_id, is_asst in nodes_with_text
+                ]
+        
         return nodes_with_text, node_images
 
     def _infer_level_from_text(self, text: str) -> int:
