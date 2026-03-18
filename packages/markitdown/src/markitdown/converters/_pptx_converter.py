@@ -1040,7 +1040,7 @@ class PptxConverter(DocumentConverter):
         content_items: list,
         slide_width: int,
         slide_height: int,
-        min_gap_ratio: float = 0.02,
+        min_gap_ratio: float = 0.015,
     ) -> list:
         """
         Sort shapes in reading order using recursive X-Y Cut.
@@ -1054,7 +1054,7 @@ class PptxConverter(DocumentConverter):
             slide_width: Presentation slide width in EMU.
             slide_height: Presentation slide height in EMU.
             min_gap_ratio: Minimum gap/dimension ratio to trigger
-                a split (default 2%).
+                a split (default 1.5%).
 
         Returns:
             content_items sorted in visual reading order.
@@ -1080,7 +1080,16 @@ class PptxConverter(DocumentConverter):
         best_ratio = max(v_ratio, h_ratio)
 
         if best_ratio > min_gap_ratio:
-            if v_ratio >= h_ratio:
+            # When both gaps qualify, compare absolute EMU sizes
+            # so wider-than-tall slides don't penalise vertical gaps
+            v_qualifies = v_ratio > min_gap_ratio
+            h_qualifies = h_ratio > min_gap_ratio
+            use_v = (
+                v_qualifies and not h_qualifies
+                or (v_qualifies and h_qualifies
+                    and v_gap[2] >= h_gap[2])  # type: ignore[index]
+            )
+            if use_v:
                 split_pos = v_gap[0]  # type: ignore[index]
                 left_group = [
                     item for item, r in zip(content_items, rights)
